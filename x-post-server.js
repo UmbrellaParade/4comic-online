@@ -4,10 +4,19 @@ const path = require("path");
 const crypto = require("crypto");
 const { execFile } = require("child_process");
 
-const ONLINE_MODE = /^(1|true|yes|on)$/i.test(String(process.env.ONLINE_MODE || ""));
+const IS_RAILWAY = !!(
+  process.env.RAILWAY_ENVIRONMENT
+  || process.env.RAILWAY_PROJECT_ID
+  || process.env.RAILWAY_SERVICE_ID
+  || process.env.RAILWAY_PUBLIC_DOMAIN
+);
+const ONLINE_MODE = IS_RAILWAY || /^(1|true|yes|on)$/i.test(String(process.env.ONLINE_MODE || ""));
 const HOST = process.env.HOST || (ONLINE_MODE ? "0.0.0.0" : "127.0.0.1");
 const PORT = Number(process.env.PORT || process.env.X_POST_SERVER_PORT || 8787);
-const PUBLIC_BASE_URL = String(process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "");
+const PUBLIC_BASE_URL = String(
+  process.env.PUBLIC_BASE_URL
+  || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "")
+).replace(/\/+$/, "");
 const MAX_BODY_BYTES = 25 * 1024 * 1024;
 const DATA_DIR = path.resolve(process.env.DATA_DIR || (ONLINE_MODE ? path.join(__dirname, "data") : __dirname));
 fs.mkdirSync(DATA_DIR, { recursive: true });
