@@ -50,6 +50,7 @@ const SCHEDULE_PATH = path.join(DATA_DIR, "x-scheduled-posts.json");
 const IMPORT_DIRS_PATH = path.join(DATA_DIR, "manga-import-directories.json");
 const OAUTH_TOKENS_PATH = path.join(DATA_DIR, "x-oauth-tokens.json");
 const RUNTIME_IMAGES_PATH = path.join(DATA_DIR, "runtime-images.json");
+const SEED_IDEA_STOCK_PATH = path.join(__dirname, "seed-idea-stock.json");
 const GITHUB_WORKFLOWS_DIR = path.join(__dirname, ".github", "workflows");
 const GIT_DIR = path.join(__dirname, ".git");
 const VAULT_ROOT = process.env.VAULT_ROOT || path.resolve(__dirname, "..", "..", "..", "..");
@@ -1234,6 +1235,30 @@ function publicRuntimeImage(image) {
   };
 }
 
+function readSeedIdeaStock() {
+  const payload = readJsonFile(SEED_IDEA_STOCK_PATH, { ideas: [] });
+  const ideas = Array.isArray(payload) ? payload : (Array.isArray(payload.ideas) ? payload.ideas : []);
+  return ideas
+    .filter((item) => item && typeof item === "object")
+    .map((item) => ({
+      ...item,
+      type: "past",
+      productionStatus: "made",
+      source: item.source || "old_tool_seed"
+    }));
+}
+
+function handleListSeedIdeaStock(res) {
+  const payload = readJsonFile(SEED_IDEA_STOCK_PATH, { generatedAt: "", count: 0, ideas: [] });
+  const ideas = readSeedIdeaStock();
+  sendJson(res, 200, {
+    ok: true,
+    generatedAt: payload.generatedAt || "",
+    count: ideas.length,
+    ideas
+  });
+}
+
 function runtimeImageFromPayload(payload, character) {
   const dataUrl = String(payload.dataUrl || "");
   const media = dataUrlToMediaBuffer(dataUrl);
@@ -2082,6 +2107,11 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && requestUrl.pathname === "/last-error") {
     sendJson(res, 200, { ok: true, error: lastError });
+    return;
+  }
+
+  if (req.method === "GET" && requestUrl.pathname === "/seed-idea-stock") {
+    handleListSeedIdeaStock(res);
     return;
   }
 

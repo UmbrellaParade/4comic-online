@@ -5172,6 +5172,7 @@ ${text}`;
 
     // ── Stock and Obsidian helpers ───────────────────────────────
     const STOCK_KEY = "umbrellaMangaIdeaStock";
+    const SEED_IDEA_STOCK_IMPORTED_KEY = "umbrellaMangaSeedIdeaStockImportedIds";
     const ACTIVE_MANGA_IDEA_KEY = "umbrellaMangaActiveIdeaId";
     const ACTIVE_IDEA_DRAFT_KEY = "umbrellaMangaActiveIdeaDraft";
     const IDEA_SUMMARY_RESET_KEY = "umbrellaMangaIdeaSummaryReset";
@@ -5299,6 +5300,100 @@ ${text}`;
 
     function writeList(key, list) {
       localStorage.setItem(key, JSON.stringify(Array.isArray(list) ? list : []));
+    }
+
+    function seedIdeaKey(item) {
+      if (!item) return "";
+      return item.seedId || item.id || [
+        item.sourceFile,
+        item.character,
+        item.title,
+        item.p1,
+        item.p2,
+        item.p3,
+        item.p4
+      ].filter(Boolean).join("|");
+    }
+
+    function normalizeSeedIdeaStockItem(item) {
+      const key = seedIdeaKey(item);
+      return {
+        ...item,
+        id: item.id || key || `${Date.now()}_${Math.random().toString(16).slice(2)}`,
+        seedId: item.seedId || key,
+        type: "past",
+        productionStatus: "made",
+        source: item.source || "old_tool_seed",
+        createdAt: item.createdAt || new Date().toISOString(),
+        madeAt: item.madeAt || item.createdAt || new Date().toISOString(),
+        character: item.character || "ヴェル13世",
+        title: item.title || "過去ネタ",
+        subtitle: item.subtitle || "",
+        theme: item.theme || "",
+        aim: item.aim || "",
+        pastText: item.pastText || [item.title, item.theme, item.p1, item.p2, item.p3, item.p4].filter(Boolean).join(" / "),
+        p1: item.p1 || "",
+        p2: item.p2 || "",
+        p3: item.p3 || "",
+        p4: item.p4 || "",
+        platform: item.platform || "旧ツール",
+        date: item.date || "",
+        time: item.time || "",
+        aiProvider: item.aiProvider || "import",
+        aiModel: item.aiModel || "old-tool",
+        imagePath: item.imagePath || "",
+        card: item.card || "",
+        prompt: item.prompt || "",
+        caption: item.caption || ""
+      };
+    }
+
+    function seedIdeaCompositeKey(item) {
+      return [
+        item.character,
+        normalizeIdeaText(item.title),
+        normalizeIdeaText(item.p1),
+        normalizeIdeaText(item.p2),
+        normalizeIdeaText(item.p3),
+        normalizeIdeaText(item.p4)
+      ].join("|");
+    }
+
+    async function loadSeedIdeaStock() {
+      try {
+        const response = await fetch(`${xLocalServerUrl()}/seed-idea-stock`, { method: "GET" });
+        if (!response.ok) return 0;
+        const payload = await response.json();
+        const seeds = Array.isArray(payload.ideas) ? payload.ideas.map(normalizeSeedIdeaStockItem) : [];
+        if (!seeds.length) return 0;
+
+        const list = readList(STOCK_KEY);
+        const importedIds = new Set(readList(SEED_IDEA_STOCK_IMPORTED_KEY));
+        const existingKeys = new Set(list.map(seedIdeaKey).filter(Boolean));
+        const existingCompositeKeys = new Set(list.map(seedIdeaCompositeKey).filter(Boolean));
+        const additions = [];
+
+        seeds.forEach((item) => {
+          const key = seedIdeaKey(item);
+          const compositeKey = seedIdeaCompositeKey(item);
+          if ((key && (existingKeys.has(key) || importedIds.has(key))) || existingCompositeKeys.has(compositeKey)) return;
+          additions.push(item);
+          if (key) {
+            existingKeys.add(key);
+            importedIds.add(key);
+          }
+          existingCompositeKeys.add(compositeKey);
+        });
+
+        if (!additions.length) return 0;
+        writeList(STOCK_KEY, [...list, ...additions].slice(0, 500));
+        writeList(SEED_IDEA_STOCK_IMPORTED_KEY, Array.from(importedIds).slice(-500));
+        console.info(`旧ツールの過去ネタを${additions.length}件取り込みました。`);
+        return additions.length;
+      } catch (error) {
+        console.warn("旧ツールの過去ネタを読み込めませんでした。", error);
+        return 0;
+      }
     }
 
     function readCharacterScheduleDates() {
@@ -5626,7 +5721,7 @@ ${text}`;
 
     function itemSummary(item) {
       const imageMark = item.imageFilename ? " / 画像あり" : "";
-      const sourceMark = item.source === "manual_past" ? "過去登録 / " : "";
+      const sourceMark = item.type === "past" || item.source === "manual_past" || item.source === "old_tool_seed" ? "過去登録 / " : "";
       const statusMark = ideaProductionStatus(item) === "made" ? "作成済み / " : "";
       return `${sourceMark}${statusMark}${item.date || ""} ${item.time || ""} / ${item.character} / ${item.title}${imageMark}`;
     }
@@ -10681,6 +10776,7 @@ ${optionalOutput ? optionalOutput + "\n" : ""}  "p1": "1コマ目のセリフや
       updateProfilePanel();
       applyCharacterTemplateDefaults(val("character") || "ヴェル13世");
       loadSnsTextSettings(val("character") || "ヴェル13世");
+      await loadSeedIdeaStock();
       renderIdeaStock();
       renderReservations();
       renderImagePatternSelect();

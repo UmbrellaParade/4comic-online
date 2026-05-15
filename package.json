@@ -10,6 +10,7 @@
     "start": "node x-post-server.js",
     "start:online": "set ONLINE_MODE=true&& node x-post-server.js",
     "scheduler": "node x-scheduler-runner.js",
-    "check": "node --check x-post-server.js && node --check x-scheduler-runner.js"
+    "build:seed-ideas": "node scripts/build-seed-idea-stock.js",
+    "check": "node --check x-post-server.js && node --check x-scheduler-runner.js && node --check scripts/build-seed-idea-stock.js"
   }
 }
