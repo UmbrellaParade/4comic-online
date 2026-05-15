@@ -7376,6 +7376,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     function wordpressSettingsPayload(character = val("character"), settings = null) {
       const wpSettings = settings || wordpressSettingsForUse(character);
       return {
+        character: wordpressTargetCharacter(character),
         siteUrl: wpSettings.siteUrl || WP_DEFAULT_SITE_URL,
         username: wpSettings.username,
         appPassword: wpSettings.appPassword

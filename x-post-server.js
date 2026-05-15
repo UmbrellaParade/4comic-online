@@ -1076,6 +1076,54 @@ function normalizeApplicationPassword(raw) {
   return String(raw || "").replace(/\s+/g, "");
 }
 
+function envValue(...names) {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value !== undefined && String(value).trim()) return String(value).trim();
+  }
+  return "";
+}
+
+function wordpressEnvKeyForCharacter(raw) {
+  const value = String(raw || "").trim();
+  const lower = value.toLowerCase();
+  if (/カーラ|carla/.test(value) || lower.includes("carla")) return "CARLA";
+  if (/ヴェル|vel|vel13/.test(value) || lower.includes("vel")) return "VEL13";
+  if (/べるぼ|belbo/.test(value) || lower.includes("belbo")) return "BELBO";
+  return value
+    .normalize("NFKC")
+    .replace(/[^\w]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toUpperCase() || "DEFAULT";
+}
+
+function resolveWordPressCredentials(payload = {}) {
+  const key = wordpressEnvKeyForCharacter(payload.character);
+  const siteUrl = envValue(
+    `WP_${key}_SITE_URL`,
+    `WORDPRESS_${key}_SITE_URL`,
+    "WP_SITE_URL",
+    "WORDPRESS_SITE_URL"
+  ) || payload.siteUrl;
+  const username = envValue(
+    `WP_${key}_USERNAME`,
+    `WORDPRESS_${key}_USERNAME`,
+    "WP_USERNAME",
+    "WORDPRESS_USERNAME"
+  ) || payload.username;
+  const appPassword = envValue(
+    `WP_${key}_APP_PASSWORD`,
+    `WORDPRESS_${key}_APP_PASSWORD`,
+    "WP_APP_PASSWORD",
+    "WORDPRESS_APP_PASSWORD"
+  ) || payload.appPassword;
+  return {
+    siteUrl: normalizeWordPressSiteUrl(siteUrl),
+    username: String(username || "").trim(),
+    appPassword: normalizeApplicationPassword(appPassword)
+  };
+}
+
 function wordpressAuthHeader(username, appPassword) {
   const user = String(username || "").trim();
   const password = normalizeApplicationPassword(appPassword);
@@ -1756,7 +1804,8 @@ function wordpressDateLocal(value, fallbackUtc = "") {
 
 async function handleCheckWordPress(req, res) {
   const payload = JSON.parse(await readBody(req) || "{}");
-  const user = await wordpressJson(payload.siteUrl, payload.username, payload.appPassword, "/users/me", {
+  const { siteUrl, username, appPassword } = resolveWordPressCredentials(payload);
+  const user = await wordpressJson(siteUrl, username, appPassword, "/users/me", {
     params: { context: "edit" }
   });
   sendJson(res, 200, { ok: true, user: { id: user.id, name: user.name, slug: user.slug } });
@@ -1764,9 +1813,7 @@ async function handleCheckWordPress(req, res) {
 
 async function handleUpdateWordPressSchedule(req, res) {
   const payload = JSON.parse(await readBody(req) || "{}");
-  const siteUrl = normalizeWordPressSiteUrl(payload.siteUrl);
-  const username = String(payload.username || "").trim();
-  const appPassword = normalizeApplicationPassword(payload.appPassword);
+  const { siteUrl, username, appPassword } = resolveWordPressCredentials(payload);
   const postId = Number(payload.postId || 0);
   const scheduled = Date.parse(payload.scheduledAt || "");
   if (!postId) throw new Error("WordPress投稿IDがありません。");
@@ -1797,9 +1844,7 @@ async function handleUpdateWordPressSchedule(req, res) {
 
 async function handlePostWordPress(req, res) {
   const payload = JSON.parse(await readBody(req) || "{}");
-  const siteUrl = normalizeWordPressSiteUrl(payload.siteUrl);
-  const username = String(payload.username || "").trim();
-  const appPassword = normalizeApplicationPassword(payload.appPassword);
+  const { siteUrl, username, appPassword } = resolveWordPressCredentials(payload);
   const status = String(payload.status || "future").trim();
   const title = String(payload.title || "").trim();
   const slug = String(payload.slug || "").trim();
