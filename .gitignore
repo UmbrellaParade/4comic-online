@@ -1,0 +1,32 @@
+# Secrets / local account tokens
+x-oauth-tokens.json
+data/x-oauth-tokens.json
+.env
+.env.local
+
+# Runtime logs
+x-post-server.log
+x-scheduler-runner.log
+manga-tool-launcher.log
+data/*.log
+
+# Local-only settings
+manga-import-directories.json
+data/manga-import-directories.json
+
+# Online runtime data
+data/x-scheduled-posts.json
+data/runtime-images/
+data/uploads/
+
+# Local backups
+バックアップ/
+
+# Dependencies
+node_modules/
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

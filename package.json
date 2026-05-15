@@ -1,0 +1,15 @@
+{
+  "name": "umbrella-parade-manga-online",
+  "version": "1.0.0",
+  "description": "Umbrella Parade online manga creation and scheduled posting tool",
+  "main": "x-post-server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node x-post-server.js",
+    "start:online": "set ONLINE_MODE=true&& node x-post-server.js",
+    "scheduler": "node x-scheduler-runner.js",
+    "check": "node --check x-post-server.js && node --check x-scheduler-runner.js"
+  }
+}

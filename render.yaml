@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: umbrella-parade-manga-online
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: ONLINE_MODE
+        value: "true"
+      - key: HOST
+        value: "0.0.0.0"
+      - key: DATA_DIR
+        value: "/var/data"
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+    disk:
+      name: manga-online-data
+      mountPath: /var/data
+      sizeGB: 5
