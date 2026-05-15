@@ -3433,6 +3433,7 @@
     const IMAGE_FILE_RE = /\.(png|jpe?g|webp|gif)$/i;
     const RUNTIME_IMAGE_PREFIX = "読み込み画像";
     const PERSISTED_RUNTIME_IMAGE_PREFIX = "persisted-runtime-image:";
+    const SERVER_RUNTIME_IMAGE_PREFIX = "server-runtime-image:";
     const PERSISTED_RUNTIME_IMAGE_DB = "umbrellaMangaPersistedRuntimeImages";
     const PERSISTED_RUNTIME_IMAGE_STORE = "images";
     const runtimeImagesByCharacter = {};
@@ -3445,6 +3446,15 @@
 
     function persistedRuntimePath(id) {
       return `${PERSISTED_RUNTIME_IMAGE_PREFIX}${id}`;
+    }
+
+    function serverRuntimePath(id) {
+      return `${SERVER_RUNTIME_IMAGE_PREFIX}${id}`;
+    }
+
+    function serverRuntimeIdFromPath(path) {
+      const raw = String(path || "").trim();
+      return raw.startsWith(SERVER_RUNTIME_IMAGE_PREFIX) ? raw.slice(SERVER_RUNTIME_IMAGE_PREFIX.length) : "";
     }
 
     function findImageByPath(path, character = val("character")) {
@@ -3560,6 +3570,59 @@
       });
     }
 
+    function normalizeServerRuntimeImage(image) {
+      if (!image || !image.id) return null;
+      return {
+        id: image.id,
+        character: image.character || "ヴェル13世",
+        name: image.name || "online-reference.png",
+        path: serverRuntimePath(image.id),
+        localPath: image.name || "",
+        category: image.category || "オンライン保存画像",
+        runtime: true,
+        serverPersisted: true,
+        dataUrl: image.dataUrl || "",
+        createdAt: image.createdAt || new Date().toISOString(),
+      };
+    }
+
+    async function loadServerRuntimeImages() {
+      const response = await fetch(`${xLocalServerUrl()}/runtime-images`, { method: "GET" });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json.ok) throw new Error(json.error || `HTTP ${response.status}`);
+      (Array.isArray(json.images) ? json.images : []).forEach((image) => {
+        const normalized = normalizeServerRuntimeImage(image);
+        if (!normalized) return;
+        runtimeImagesByCharacter[normalized.character] = runtimeImagesByCharacter[normalized.character] || [];
+        const exists = runtimeImagesByCharacter[normalized.character].some((item) => item.path === normalized.path);
+        if (!exists) runtimeImagesByCharacter[normalized.character].push(normalized);
+      });
+    }
+
+    async function uploadRuntimeImagesToServer(character, images) {
+      const response = await fetch(`${xLocalServerUrl()}/runtime-images`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ character, images })
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json.ok) throw new Error(json.error || `HTTP ${response.status}`);
+      return (Array.isArray(json.images) ? json.images : [])
+        .map(normalizeServerRuntimeImage)
+        .filter(Boolean);
+    }
+
+    async function deleteServerRuntimeImage(id, character = val("character") || "ヴェル13世") {
+      if (!id) return;
+      const response = await fetch(`${xLocalServerUrl()}/runtime-images/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, character })
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json.ok) throw new Error(json.error || `HTTP ${response.status}`);
+    }
+
     async function addRuntimeImages(files) {
       const character = val("character") || "ヴェル13世";
       const list = Array.from(files || []).filter((file) => file.type.startsWith("image/") || IMAGE_FILE_RE.test(file.name));
@@ -3570,34 +3633,59 @@
       }
       runtimeImagesByCharacter[character] = runtimeImagesByCharacter[character] || [];
       $("statusText").textContent = "画像を保存しながら読み込んでいます…";
-      const images = await Promise.all(list.map(async (file) => {
-        const id = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
-        const localPath = file.webkitRelativePath || file.name;
-        const image = {
-          id,
-          character,
-          name: file.name,
-          path: persistedRuntimePath(id),
-          localPath,
-          category: runtimeCategory(file),
-          runtime: true,
-          persisted: true,
-          dataUrl: await fileToDataUrl(file),
-          createdAt: new Date().toISOString(),
-        };
-        await putPersistedRuntimeImage(image);
-        return image;
-      }));
+      const prepared = await Promise.all(list.map(async (file) => ({
+        name: file.name,
+        localPath: file.webkitRelativePath || file.name,
+        category: runtimeCategory(file),
+        dataUrl: await fileToDataUrl(file),
+      })));
+
+      let images = [];
+      let savedToServer = false;
+      try {
+        images = await uploadRuntimeImagesToServer(character, prepared);
+        savedToServer = images.length > 0;
+      } catch (error) {
+        console.warn("オンライン画像保存に失敗しました。ブラウザ内保存へ切り替えます。", error);
+      }
+
+      if (!savedToServer) {
+        images = await Promise.all(prepared.map(async (item) => {
+          const id = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+          const image = {
+            id,
+            character,
+            name: item.name,
+            path: persistedRuntimePath(id),
+            localPath: item.localPath,
+            category: item.category,
+            runtime: true,
+            persisted: true,
+            dataUrl: item.dataUrl,
+            createdAt: new Date().toISOString(),
+          };
+          await putPersistedRuntimeImage(image);
+          return image;
+        }));
+      }
+
       runtimeImagesByCharacter[character].push(...images);
       updateProfilePanel();
       updateRuntimeImageStatus();
-      $("statusText").textContent = `${character}に画像を${list.length}枚追加し、次回起動用に保存しました。`;
-      setTimeout(() => $("statusText").textContent = "", 2600);
+      $("statusText").textContent = savedToServer
+        ? `${character}に画像を${images.length}枚追加し、Railway側に保存しました。`
+        : `${character}に画像を${images.length}枚追加し、このブラウザ内に保存しました。`;
+      setTimeout(() => $("statusText").textContent = "", 3000);
     }
 
     async function clearRuntimeImages() {
+      const serverImages = Object.values(runtimeImagesByCharacter)
+        .flat()
+        .filter((image) => image.serverPersisted && image.id)
+        .map((image) => ({ id: image.id, character: image.character }));
       Object.keys(runtimeImagesByCharacter).forEach((name) => { runtimeImagesByCharacter[name] = []; });
       runtimeObjectUrls.splice(0).forEach((url) => URL.revokeObjectURL(url));
+      await Promise.all(serverImages.map((image) => deleteServerRuntimeImage(image.id, image.character).catch((error) => console.error(error))));
       await clearPersistedRuntimeImages().catch((error) => console.error(error));
       updateProfilePanel();
       updateRuntimeImageStatus();
@@ -3607,9 +3695,11 @@
 
     function updateRuntimeImageStatus() {
       const character = val("character") || "ヴェル13世";
-      const count = (runtimeImagesByCharacter[character] || []).length;
-      $("runtimeImageStatus").textContent = count
-        ? `${character}：追加読み込み画像 ${count}枚（次回起動後も保存）`
+      const list = runtimeImagesByCharacter[character] || [];
+      const serverCount = list.filter((image) => image.serverPersisted).length;
+      const browserCount = list.length - serverCount;
+      $("runtimeImageStatus").textContent = list.length
+        ? `${character}：追加読み込み画像 ${list.length}枚（Railway ${serverCount} / ブラウザ ${browserCount}）`
         : `${character}：追加読み込み画像なし`;
     }
 
@@ -4012,7 +4102,9 @@
       if (index < 0) return false;
       const [removed] = list.splice(index, 1);
       if (removed && removed.path) {
-        if (removed.persisted && removed.id) {
+        if (removed.serverPersisted && removed.id) {
+          deleteServerRuntimeImage(removed.id, character).catch((error) => console.error(error));
+        } else if (removed.persisted && removed.id) {
           deletePersistedRuntimeImage(removed.id).catch((error) => console.error(error));
         } else {
           URL.revokeObjectURL(removed.path);
@@ -8859,7 +8951,8 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
           return path
             && !/^data:/i.test(path)
             && !/^blob:/i.test(path)
-            && !persistedRuntimeIdFromPath(path);
+            && !persistedRuntimeIdFromPath(path)
+            && !serverRuntimeIdFromPath(path);
         })
         .filter((path) => {
           const key = path.toLowerCase();
@@ -8885,6 +8978,18 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
           const baseName = dataUrlReferenceFilename(path, character, payload.referenceDataUrls.length);
           payload.referenceDataUrls.push({
             dataUrl: path,
+            filename: referenceFilenameWithLabel(baseName, label, `reference-image-${payload.referenceDataUrls.length + 1}.png`),
+            label
+          });
+          continue;
+        }
+
+        const selectedImage = findImageByPath(path, character)
+          || Object.keys(characterData).map((name) => findImageByPath(path, name)).find(Boolean);
+        if (selectedImage?.dataUrl) {
+          const baseName = selectedImage.name || dataUrlReferenceFilename(path, character, payload.referenceDataUrls.length);
+          payload.referenceDataUrls.push({
+            dataUrl: selectedImage.dataUrl,
             filename: referenceFilenameWithLabel(baseName, label, `reference-image-${payload.referenceDataUrls.length + 1}.png`),
             label
           });
@@ -10564,6 +10669,7 @@ ${optionalOutput ? optionalOutput + "\n" : ""}  "p1": "1コマ目のセリフや
       refreshXScheduleQueue(false);
       try {
         await loadPersistedRuntimeImages();
+        await loadServerRuntimeImages();
       } catch (error) {
         console.error(error);
         $("runtimeImageStatus").textContent = "保存済み追加画像を読み込めませんでした。";

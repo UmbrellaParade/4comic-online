@@ -49,6 +49,7 @@ const LOG_PATH = path.join(DATA_DIR, "x-post-server.log");
 const SCHEDULE_PATH = path.join(DATA_DIR, "x-scheduled-posts.json");
 const IMPORT_DIRS_PATH = path.join(DATA_DIR, "manga-import-directories.json");
 const OAUTH_TOKENS_PATH = path.join(DATA_DIR, "x-oauth-tokens.json");
+const RUNTIME_IMAGES_PATH = path.join(DATA_DIR, "runtime-images.json");
 const GITHUB_WORKFLOWS_DIR = path.join(__dirname, ".github", "workflows");
 const GIT_DIR = path.join(__dirname, ".git");
 const VAULT_ROOT = process.env.VAULT_ROOT || path.resolve(__dirname, "..", "..", "..", "..");
@@ -1212,6 +1213,75 @@ function dataUrlToMediaBuffer(dataUrl) {
   return { mimeType: match[1], buffer: Buffer.from(match[2], "base64") };
 }
 
+function readRuntimeImages() {
+  const images = readJsonFile(RUNTIME_IMAGES_PATH, []);
+  return Array.isArray(images) ? images : [];
+}
+
+function writeRuntimeImages(images) {
+  writeJsonFile(RUNTIME_IMAGES_PATH, Array.isArray(images) ? images : []);
+}
+
+function publicRuntimeImage(image) {
+  return {
+    id: image.id || "",
+    character: image.character || "",
+    name: image.name || "",
+    category: image.category || "オンライン保存画像",
+    dataUrl: image.dataUrl || "",
+    createdAt: image.createdAt || "",
+    source: "railway"
+  };
+}
+
+function runtimeImageFromPayload(payload, character) {
+  const dataUrl = String(payload.dataUrl || "");
+  const media = dataUrlToMediaBuffer(dataUrl);
+  const filename = safeMediaFilename(payload.name || payload.filename, `reference-${Date.now()}`, media.mimeType);
+  return {
+    id: `srv_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`,
+    character: String(payload.character || character || "").trim() || "ヴェル13世",
+    name: filename,
+    category: String(payload.category || "オンライン保存画像").trim() || "オンライン保存画像",
+    dataUrl,
+    byteSize: media.buffer.length,
+    createdAt: new Date().toISOString()
+  };
+}
+
+async function handleListRuntimeImages(req, res, requestUrl) {
+  const character = String(requestUrl.searchParams.get("character") || "").trim();
+  const images = readRuntimeImages()
+    .filter((image) => !character || image.character === character)
+    .map(publicRuntimeImage);
+  sendJson(res, 200, { ok: true, images });
+}
+
+async function handleSaveRuntimeImages(req, res) {
+  const payload = JSON.parse(await readBody(req) || "{}");
+  const character = String(payload.character || "").trim() || "ヴェル13世";
+  const rawImages = Array.isArray(payload.images) ? payload.images : [payload];
+  const nextImages = rawImages
+    .filter((image) => image && image.dataUrl)
+    .map((image) => runtimeImageFromPayload(image, character));
+  if (!nextImages.length) throw new Error("保存するキャラクター画像がありません。");
+  const store = readRuntimeImages();
+  store.push(...nextImages);
+  writeRuntimeImages(store);
+  sendJson(res, 200, { ok: true, images: nextImages.map(publicRuntimeImage) });
+}
+
+async function handleDeleteRuntimeImage(req, res) {
+  const payload = JSON.parse(await readBody(req) || "{}");
+  const id = String(payload.id || "").trim();
+  const character = String(payload.character || "").trim();
+  if (!id) throw new Error("削除する画像IDがありません。");
+  const before = readRuntimeImages();
+  const after = before.filter((image) => !(image.id === id && (!character || image.character === character)));
+  writeRuntimeImages(after);
+  sendJson(res, 200, { ok: true, deleted: before.length - after.length });
+}
+
 function extensionForMimeType(mimeType) {
   const map = {
     "image/jpeg": ".jpg",
@@ -2012,6 +2082,36 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && requestUrl.pathname === "/last-error") {
     sendJson(res, 200, { ok: true, error: lastError });
+    return;
+  }
+
+  if (req.method === "GET" && requestUrl.pathname === "/runtime-images") {
+    try {
+      await handleListRuntimeImages(req, res, requestUrl);
+    } catch (error) {
+      rememberError(error, { route: "/runtime-images" });
+      sendJson(res, error.status || 500, { ok: false, error: error.message || "Runtime image list error." });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && requestUrl.pathname === "/runtime-images") {
+    try {
+      await handleSaveRuntimeImages(req, res);
+    } catch (error) {
+      rememberError(error, { route: "/runtime-images" });
+      sendJson(res, error.status || 500, { ok: false, error: error.message || "Runtime image save error." });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && requestUrl.pathname === "/runtime-images/delete") {
+    try {
+      await handleDeleteRuntimeImage(req, res);
+    } catch (error) {
+      rememberError(error, { route: "/runtime-images/delete" });
+      sendJson(res, error.status || 500, { ok: false, error: error.message || "Runtime image delete error." });
+    }
     return;
   }
 

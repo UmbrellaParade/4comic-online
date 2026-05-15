@@ -16,6 +16,7 @@ data/manga-import-directories.json
 
 # Online runtime data
 data/x-scheduled-posts.json
+data/runtime-images.json
 data/runtime-images/
 data/uploads/
 
