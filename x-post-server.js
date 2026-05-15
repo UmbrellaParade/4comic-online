@@ -1,5 +1,6 @@
 const fs = require("fs");
 const http = require("http");
+const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
 const { execFile } = require("child_process");
@@ -18,8 +19,32 @@ const PUBLIC_BASE_URL = String(
   || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "")
 ).replace(/\/+$/, "");
 const MAX_BODY_BYTES = 25 * 1024 * 1024;
-const DATA_DIR = path.resolve(process.env.DATA_DIR || (ONLINE_MODE ? path.join(__dirname, "data") : __dirname));
-fs.mkdirSync(DATA_DIR, { recursive: true });
+function resolveWritableDataDir() {
+  const candidates = [
+    process.env.DATA_DIR,
+    process.env.RAILWAY_VOLUME_MOUNT_PATH,
+    ONLINE_MODE ? path.join(process.cwd(), "data") : __dirname,
+    path.join(os.tmpdir(), "umbrella-parade-manga-online")
+  ].filter(Boolean);
+
+  const tried = new Set();
+  for (const candidate of candidates) {
+    const dir = path.resolve(candidate);
+    if (tried.has(dir)) continue;
+    tried.add(dir);
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, ".write-test"), "ok", "utf8");
+      fs.rmSync(path.join(dir, ".write-test"), { force: true });
+      return dir;
+    } catch (error) {
+      console.warn(`Data directory is not writable: ${dir}`, error.message || String(error));
+    }
+  }
+  throw new Error("No writable data directory was found.");
+}
+
+const DATA_DIR = resolveWritableDataDir();
 const LOG_PATH = path.join(DATA_DIR, "x-post-server.log");
 const SCHEDULE_PATH = path.join(DATA_DIR, "x-scheduled-posts.json");
 const IMPORT_DIRS_PATH = path.join(DATA_DIR, "manga-import-directories.json");
