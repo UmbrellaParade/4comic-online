@@ -3935,7 +3935,8 @@
     }
 
     function serverStateAllowedKey(key) {
-      return /^umbrellaManga(ImageSet|ImagePatterns|SelectedImagePattern)_/.test(String(key || ""));
+      return /^umbrellaManga(ImageSet|ImagePatterns|SelectedImagePattern)_/.test(String(key || ""))
+        || /^umbrellaMangaScheduled(Date|Time)ByCharacter$/.test(String(key || ""));
     }
 
     async function saveServerClientState(key, value) {
@@ -4675,15 +4676,15 @@
 
     function advanceNextScheduledDateAfter(item) {
       const nextDate = addDaysToDateInput((item && item.date) || val("scheduled") || today(), 1);
-      const nextTime = (item && item.time) || val("scheduledTime") || localStorage.getItem(LAST_TIME_KEY) || "20:00";
       const targetCharacter = (item && item.character) || val("character") || activeScheduleCharacter || "ヴェル13世";
+      const nextTime = (item && item.time) || val("scheduledTime") || savedScheduledTimeForCharacter(targetCharacter) || localStorage.getItem(LAST_TIME_KEY) || "20:00";
       saveScheduledDateForCharacter(targetCharacter, nextDate);
+      saveScheduledTimeForCharacter(targetCharacter, nextTime);
       if ((val("character") || targetCharacter) === targetCharacter) {
         if ($("scheduled")) $("scheduled").value = nextDate;
         if ($("scheduledTime")) $("scheduledTime").value = nextTime;
         if ($("calendarMonth")) $("calendarMonth").value = nextDate.slice(0, 7);
       }
-      if (nextTime) localStorage.setItem(LAST_TIME_KEY, nextTime);
       render();
       renderCalendar();
       return nextDate;
@@ -5322,6 +5323,7 @@ ${text}`;
     const RESERVATION_KEY = "umbrellaMangaReservations";
     const LAST_TIME_KEY = "umbrellaMangaLastScheduledTime";
     const SCHEDULE_DATE_BY_CHARACTER_KEY = "umbrellaMangaScheduledDateByCharacter";
+    const SCHEDULE_TIME_BY_CHARACTER_KEY = "umbrellaMangaScheduledTimeByCharacter";
     const IMAGE_DOWNLOAD_FOLDER_BY_CHARACTER_KEY = "umbrellaMangaImageDownloadFolderByCharacter";
     const IMAGE_DOWNLOAD_NAME_BY_CHARACTER_KEY = "umbrellaMangaImageDownloadNameByCharacter";
     const COLLAPSE_STATE_KEY = "umbrellaMangaCollapseState";
@@ -5526,7 +5528,7 @@ ${text}`;
 
     async function loadSeedIdeaStock() {
       try {
-        const response = await fetch(`${xLocalServerUrl()}/seed-idea-stock`, { method: "GET" });
+        const response = await fetch(`${scheduleServerUrl()}/seed-idea-stock`, { method: "GET" });
         if (!response.ok) return 0;
         const payload = await response.json();
         const seeds = Array.isArray(payload.ideas) ? payload.ideas.map(normalizeSeedIdeaStockItem) : [];
@@ -5573,6 +5575,26 @@ ${text}`;
 
     function writeCharacterScheduleDates(map) {
       localStorage.setItem(SCHEDULE_DATE_BY_CHARACTER_KEY, JSON.stringify(map || {}));
+      syncServerClientState(SCHEDULE_DATE_BY_CHARACTER_KEY, map || {});
+    }
+
+    function readCharacterScheduleTimes() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(SCHEDULE_TIME_BY_CHARACTER_KEY) || "{}");
+        return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+      } catch {
+        localStorage.removeItem(SCHEDULE_TIME_BY_CHARACTER_KEY);
+        return {};
+      }
+    }
+
+    function writeCharacterScheduleTimes(map) {
+      localStorage.setItem(SCHEDULE_TIME_BY_CHARACTER_KEY, JSON.stringify(map || {}));
+      syncServerClientState(SCHEDULE_TIME_BY_CHARACTER_KEY, map || {});
+    }
+
+    function validTimeInput(value) {
+      return /^\d{1,2}:\d{2}$/.test(String(value || ""));
     }
 
     function readImageDownloadFolders() {
@@ -5835,6 +5857,22 @@ ${text}`;
       return validDateInput(date) ? date : "";
     }
 
+    function saveScheduledTimeForCharacter(character = activeScheduleCharacter || val("character"), time = val("scheduledTime")) {
+      const targetCharacter = character || "ヴェル13世";
+      const normalized = validTimeInput(time) ? String(time).padStart(5, "0") : "";
+      if (!normalized) return;
+      const map = readCharacterScheduleTimes();
+      map[targetCharacter] = normalized;
+      writeCharacterScheduleTimes(map);
+      localStorage.setItem(LAST_TIME_KEY, normalized);
+    }
+
+    function savedScheduledTimeForCharacter(character = val("character")) {
+      const map = readCharacterScheduleTimes();
+      const time = map[character || "ヴェル13世"] || "";
+      return validTimeInput(time) ? String(time).padStart(5, "0") : "";
+    }
+
     function restoreScheduledDateForCharacter(character = val("character"), fallbackDate = val("scheduled") || today()) {
       const targetCharacter = character || "ヴェル13世";
       const date = savedScheduledDateForCharacter(targetCharacter) || (validDateInput(fallbackDate) ? fallbackDate : today());
@@ -5842,6 +5880,31 @@ ${text}`;
       if ($("calendarMonth")) $("calendarMonth").value = date.slice(0, 7);
       saveScheduledDateForCharacter(targetCharacter, date);
       return date;
+    }
+
+    function restoreScheduledTimeForCharacter(character = val("character"), fallbackTime = val("scheduledTime") || localStorage.getItem(LAST_TIME_KEY) || "20:00") {
+      const targetCharacter = character || "ヴェル13世";
+      const time = savedScheduledTimeForCharacter(targetCharacter) || (validTimeInput(fallbackTime) ? fallbackTime : "20:00");
+      if ($("scheduledTime")) $("scheduledTime").value = time;
+      saveScheduledTimeForCharacter(targetCharacter, time);
+      return time;
+    }
+
+    async function restoreScheduleStateFromServer() {
+      try {
+        const [dateMap, timeMap] = await Promise.all([
+          readServerClientState(SCHEDULE_DATE_BY_CHARACTER_KEY),
+          readServerClientState(SCHEDULE_TIME_BY_CHARACTER_KEY)
+        ]);
+        if (dateMap && typeof dateMap === "object" && !Array.isArray(dateMap)) {
+          localStorage.setItem(SCHEDULE_DATE_BY_CHARACTER_KEY, JSON.stringify({ ...readCharacterScheduleDates(), ...dateMap }));
+        }
+        if (timeMap && typeof timeMap === "object" && !Array.isArray(timeMap)) {
+          localStorage.setItem(SCHEDULE_TIME_BY_CHARACTER_KEY, JSON.stringify({ ...readCharacterScheduleTimes(), ...timeMap }));
+        }
+      } catch (error) {
+        console.warn("オンライン予約日時設定の復元に失敗しました。", error);
+      }
     }
 
     function readCollapseState() {
@@ -5958,7 +6021,7 @@ ${text}`;
       $("p4").value = item.p4 || "";
       $("platform").value = item.platform || "Instagram / X / TikTok";
       $("scheduled").value = item.date || today();
-      $("scheduledTime").value = item.time || localStorage.getItem(LAST_TIME_KEY) || "20:00";
+      $("scheduledTime").value = item.time || savedScheduledTimeForCharacter(item.character || val("character")) || localStorage.getItem(LAST_TIME_KEY) || "20:00";
       if (!$("fixedHashtags") || !val("fixedHashtags")) applyFixedHashtagDefault(val("character") || "ヴェル13世", false);
       render();
     }
@@ -6539,7 +6602,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       }
       base.reservationStatus = base.reservationStatus || "before";
       if (base.date) saveScheduledDateForCharacter(base.character, base.date);
-      if (base.time) localStorage.setItem(LAST_TIME_KEY, base.time);
+      if (base.time) saveScheduledTimeForCharacter(base.character, base.time);
       const item = compactReservationItem(base);
       const list = readList(RESERVATION_KEY).map(compactReservationItem);
       list.push(item);
@@ -6650,8 +6713,8 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       if (item.character) {
         activeScheduleCharacter = item.character;
         if (item.date) saveScheduledDateForCharacter(item.character, item.date);
+        if (item.time) saveScheduledTimeForCharacter(item.character, item.time);
       }
-      if (item.time) localStorage.setItem(LAST_TIME_KEY, item.time);
     }
 
     function syncSelectedReservationScheduleFromMainFields(item) {
@@ -6659,12 +6722,12 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       const editDate = $("reservationEditDate") && validDateInput(val("reservationEditDate")) ? val("reservationEditDate") : "";
       const editTime = $("reservationEditTime") ? val("reservationEditTime") : "";
       const date = editDate || (validDateInput(val("scheduled")) ? val("scheduled") : (item.date || today()));
-      const time = editTime || val("scheduledTime") || item.time || localStorage.getItem(LAST_TIME_KEY) || "20:00";
+      const time = editTime || val("scheduledTime") || item.time || savedScheduledTimeForCharacter(item.character) || localStorage.getItem(LAST_TIME_KEY) || "20:00";
       if (item.date === date && (item.time || "") === time) return item;
       const updated = updateReservationById(item.id, { date, time });
       if (updated) {
         saveScheduledDateForCharacter(updated.character || item.character, date);
-        localStorage.setItem(LAST_TIME_KEY, time);
+        saveScheduledTimeForCharacter(updated.character || item.character, time);
       }
       return updated || { ...item, date, time };
     }
@@ -6718,7 +6781,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       try {
         const updated = updateReservationById(item.id, { date, time });
         if (!updated) return;
-        if (time) localStorage.setItem(LAST_TIME_KEY, time);
+        if (time) saveScheduledTimeForCharacter(updated.character || item.character, time);
 
         if (shouldUpdateWordPressSchedule(updated)) {
           setWpStatus("WordPress予約日時を更新しています。");
@@ -7856,7 +7919,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
 
     function reservationScheduledLocal(item) {
       const date = (item && item.date) || val("scheduled") || today();
-      const time = (item && item.time) || val("scheduledTime") || localStorage.getItem(LAST_TIME_KEY) || "20:00";
+      const time = (item && item.time) || val("scheduledTime") || savedScheduledTimeForCharacter(item && item.character) || localStorage.getItem(LAST_TIME_KEY) || "20:00";
       const normalizedTime = /^\d{2}:\d{2}$/.test(time) ? `${time}:00` : time;
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}(:\d{2})?$/.test(normalizedTime)) {
         throw new Error("WordPress予約日時が正しくありません。日付と時間を確認してください。");
@@ -7880,6 +7943,10 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         const message = error.message && error.message.includes("Failed to fetch")
           ? "投稿サーバーへ接続できませんでした。オンライン版URL/クラウドURL、またはX投稿サーバー起動.batを確認してください。"
           : error.message;
+        if (/SWELL\/OGP|メタ設定|WordPress投稿は作成できました/i.test(message || "")) {
+          setWpStatus(`WordPress接続OK（追加メタだけ警告）: ${message}`);
+          return;
+        }
         setWpStatus(`WordPress接続エラー: ${message}`, "err");
       }
     }
@@ -8415,7 +8482,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
 
     function reservationScheduledAt(item) {
       const date = item.date || val("scheduled") || today();
-      const time = item.time || val("scheduledTime") || localStorage.getItem(LAST_TIME_KEY) || "20:00";
+      const time = item.time || val("scheduledTime") || savedScheduledTimeForCharacter(item.character) || localStorage.getItem(LAST_TIME_KEY) || "20:00";
       const timeMatch = String(time).trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
       if (!timeMatch) throw new Error("予約時間が正しくありません。");
       const normalizedTime = `${timeMatch[1].padStart(2, "0")}:${timeMatch[2]}:${timeMatch[3] || "00"}`;
@@ -10352,6 +10419,9 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       if ($("character") && $("scheduled")) {
         saveScheduledDateForCharacter(activeScheduleCharacter || val("character") || "ヴェル13世", val("scheduled"));
       }
+      if ($("character") && $("scheduledTime")) {
+        saveScheduledTimeForCharacter(activeScheduleCharacter || val("character") || "ヴェル13世", val("scheduledTime"));
+      }
       localStorage.setItem("umbrellaMangaToolDraft", JSON.stringify(payload));
       saveActiveIdeaDraft();
     }
@@ -10495,7 +10565,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       render();
     });
     $("scheduledTime").addEventListener("change", () => {
-      if (val("scheduledTime")) localStorage.setItem(LAST_TIME_KEY, val("scheduledTime"));
+      if (val("scheduledTime")) saveScheduledTimeForCharacter(activeScheduleCharacter || val("character") || "ヴェル13世", val("scheduledTime"));
     });
     $("calendarMonth").addEventListener("change", renderCalendar);
     $("character").addEventListener("change", async () => {
@@ -10503,10 +10573,12 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       saveSubCharacterSelection(activeScheduleCharacter || "ヴェル13世");
       saveSnsTextSettings(activeSnsSettingsCharacter || activeScheduleCharacter || "ヴェル13世");
       saveScheduledDateForCharacter(activeScheduleCharacter || character);
+      saveScheduledTimeForCharacter(activeScheduleCharacter || character);
       saveXOAuthSettings(false, activeXOAuthSettingsCharacter || activeScheduleCharacter || "ヴェル13世");
       if (activeWordPressSettingsCharacter) autosaveWordPressSettings(activeWordPressSettingsCharacter);
       activeScheduleCharacter = character;
       restoreScheduledDateForCharacter(character);
+      restoreScheduledTimeForCharacter(character);
       $("imagePatternName").value = "";
       if ($("imagePatternSelect")) $("imagePatternSelect").value = "";
       await restoreImageSelectionStateFromServer(character);
@@ -10554,7 +10626,8 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       $("status").value = "ネタ";
       $("platform").value = "Instagram / X / TikTok";
       $("scheduled").value = today();
-      $("scheduledTime").value = localStorage.getItem(LAST_TIME_KEY) || "20:00";
+      $("scheduledTime").value = savedScheduledTimeForCharacter("ヴェル13世") || localStorage.getItem(LAST_TIME_KEY) || "20:00";
+      saveScheduledTimeForCharacter("ヴェル13世", val("scheduledTime"));
       $("calendarMonth").value = today().slice(0, 7);
       $("manualPostText").value = "";
       $("autoPostText").value = "";
@@ -11035,9 +11108,11 @@ ${optionalOutput ? optionalOutput + "\n" : ""}  "p1": "1コマ目のセリフや
       if (!val("imageQuality")) $("imageQuality").value = "auto";
       if (!val("imageFormat")) $("imageFormat").value = "png";
       if (!val("scheduled")) $("scheduled").value = today();
-      if (!val("scheduledTime")) $("scheduledTime").value = localStorage.getItem(LAST_TIME_KEY) || "20:00";
+      await restoreScheduleStateFromServer();
+      if (!val("scheduledTime")) $("scheduledTime").value = savedScheduledTimeForCharacter(startupCharacter) || localStorage.getItem(LAST_TIME_KEY) || "20:00";
       activeScheduleCharacter = startupCharacter;
       restoreScheduledDateForCharacter(activeScheduleCharacter, val("scheduled") || today());
+      restoreScheduledTimeForCharacter(activeScheduleCharacter, val("scheduledTime") || localStorage.getItem(LAST_TIME_KEY) || "20:00");
       if (!val("calendarMonth")) $("calendarMonth").value = today().slice(0, 7);
       initCollapsibleState();
       loadApiKey();

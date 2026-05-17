@@ -1177,7 +1177,7 @@ function friendlyWordPressErrorMessage(message) {
     return "WordPressの認証に失敗しました。ユーザー名とApplication Passwordを確認してください。";
   }
   if (/(Invalid parameter\(s\):\s*meta|[?&]meta=|(^|[^a-z])meta([^a-z]|$)|swell_meta_|ssp_meta_|og_image|opengraph|not registered)/i.test(text)) {
-    return "WordPress投稿は作成できましたが、SWELL/OGPメタ設定の一部をREST APIが受け付けない可能性があります。";
+    return "SWELL/OGPメタ設定の一部をWordPress REST APIが受け付けませんでした。投稿本体・認証とは別の警告です。";
   }
   if (/rest_invalid_param/i.test(text)) {
     return `WordPress REST APIが一部のパラメータを受け付けませんでした: ${text}`;
@@ -1229,7 +1229,8 @@ function writeRuntimeImages(images) {
 }
 
 function clientStateAllowedKey(key) {
-  return /^umbrellaManga(ImageSet|ImagePatterns|SelectedImagePattern)_/.test(String(key || ""));
+  return /^umbrellaManga(ImageSet|ImagePatterns|SelectedImagePattern)_/.test(String(key || ""))
+    || /^umbrellaMangaScheduled(Date|Time)ByCharacter$/.test(String(key || ""));
 }
 
 function readClientState() {
