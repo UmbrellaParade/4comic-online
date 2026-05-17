@@ -3468,6 +3468,24 @@
       return src.startsWith("data:") || src.startsWith("blob:") ? src : encodeURI(src);
     }
 
+    function imageUsableInHostedTool(imgOrPath, character = val("character")) {
+      if (!isHostedToolPage()) return true;
+      const image = typeof imgOrPath === "string" ? findImageByPath(imgOrPath, character) : imgOrPath;
+      const raw = typeof imgOrPath === "string" ? imgOrPath : (image?.path || "");
+      const src = image?.dataUrl || raw || "";
+      return /^data:/i.test(src) || /^blob:/i.test(src);
+    }
+
+    function referenceUsableImages(images, character = val("character")) {
+      return isHostedToolPage()
+        ? (images || []).filter((img) => imageUsableInHostedTool(img, character))
+        : (images || []);
+    }
+
+    function hostedImageUnavailableHtml(label = "参考画像") {
+      return `<div class="preview-empty">${label}はオンライン保存されていません。<br><small style="font-size:11px;opacity:.72">「画像ファイル追加」か「画像フォルダー読込」で読み込んだ画像を選んでください。</small></div>`;
+    }
+
     function runtimeCategory(file) {
       const raw = file.webkitRelativePath || file.name;
       const parts = raw.split(/[\\/]/).filter(Boolean);
@@ -3733,7 +3751,7 @@
     }
 
     function preferredCharacterReferenceImage(character) {
-      const images = getCharacterImages(character).filter((img) => img && img.path);
+      const images = referenceUsableImages(getCharacterImages(character), character).filter((img) => img && img.path);
       const profileImages = images.filter((img) => !imageLooksLikeMangaOutput(img));
       return profileImages.find((img) => /人物|キャラ|キャラクター|reference|ref|背景透過|visual|ビジュアル|立ち絵|設定|profile/i.test(`${img.category || ""} ${img.name || ""}`))
         || profileImages.find((img) => !/サムネ|thumb|thumbnail/i.test(`${img.category || ""} ${img.name || ""}`))
@@ -3772,7 +3790,7 @@
     }
 
     function supportingCharacterReferenceImages(character, primaryImage, limit = 4) {
-      const images = getCharacterImages(character).filter((img) => img && img.path && !imageLooksLikeMangaOutput(img));
+      const images = referenceUsableImages(getCharacterImages(character), character).filter((img) => img && img.path && !imageLooksLikeMangaOutput(img));
       const priority = images.filter((img) => /人物|キャラ|キャラクター|reference|ref|3面|三面|正面|front|side|左|右|back|後ろ|立ち絵|設定|profile|visual|ビジュアル/i.test(`${img.category || ""} ${img.name || ""}`));
       const ordered = [
         primaryImage,
@@ -3858,18 +3876,20 @@
 
       // キャラ参考画像（全画像）
       const allImages = getCharacterImages(character);
-      populateImageSelect($("referenceImage"), allImages, $("referenceImage").value, "キャラ参考画像を選択");
+      const usableImages = referenceUsableImages(allImages, character);
+      populateImageSelect($("referenceImage"), usableImages, $("referenceImage").value, "キャラ参考画像を選択");
 
       // 漫画参考画像（漫画カテゴリのみ）
-      const mangaImages = allImages.filter((img) => MANGA_CATEGORIES.includes(img.category) || img.runtime);
+      const mangaImages = usableImages.filter((img) => MANGA_CATEGORIES.includes(img.category) || img.runtime);
       populateImageSelect($("mangaRefImage"), mangaImages, $("mangaRefImage").value, "漫画参考画像を選択");
 
-      $("presetSource").textContent = `${character}：資料 ${info.notePaths ? info.notePaths.length : 0}件 / キャラ画像 ${allImages.length}件 / 漫画画像 ${mangaImages.length}件`;
+      const unavailableCount = Math.max(0, allImages.length - usableImages.length);
+      $("presetSource").textContent = `${character}：資料 ${info.notePaths ? info.notePaths.length : 0}件 / オンラインで使える画像 ${usableImages.length}件 / 漫画画像 ${mangaImages.length}件${unavailableCount ? ` / PC内のみ ${unavailableCount}件` : ""}`;
 
       // 角度別スロット（全画像を共有）
       const ANGLE_IDS = ["angleFront", "angleRight", "angleLeft", "angleBack"];
       ANGLE_IDS.forEach((id) => {
-        populateImageSelect($(id), allImages, $(id).value, "未選択");
+        populateImageSelect($(id), usableImages, $(id).value, "未選択");
       });
 
       updateSubCharChecks();
@@ -4230,6 +4250,10 @@
         frame.innerHTML = '<div class="preview-empty">参考画像なし</div>';
         return;
       }
+      if (!imageUsableInHostedTool(path)) {
+        frame.innerHTML = hostedImageUnavailableHtml("キャラ参考画像");
+        return;
+      }
       const img = document.createElement("img");
       img.alt = "参考画像";
       img.src = imageSrcForPath(path);
@@ -4245,6 +4269,10 @@
       const path = val("mangaRefImage");
       if (!path) {
         frame.innerHTML = '<div class="preview-empty">漫画参考なし</div>';
+        return;
+      }
+      if (!imageUsableInHostedTool(path)) {
+        frame.innerHTML = hostedImageUnavailableHtml("漫画参考画像");
         return;
       }
       const img = document.createElement("img");
@@ -4272,6 +4300,10 @@
         frame.innerHTML = '<div class="angle-empty">未選択</div>';
         return;
       }
+      if (!imageUsableInHostedTool(path)) {
+        frame.innerHTML = '<div class="angle-empty">オンライン未保存</div>';
+        return;
+      }
       const img = document.createElement("img");
       img.src = imageSrcForPath(path);
       img.onerror = () => { frame.innerHTML = '<div class="angle-empty">表示できません</div>'; };
@@ -4290,7 +4322,7 @@
       galleryTargetId = selectId;
       const character = val("character") || "ヴェル13世";
       const info = characterData[character] || characterData["ヴェル13世"];
-      let images = getCharacterImages(character);
+      let images = referenceUsableImages(getCharacterImages(character), character);
       if (selectId === "mangaRefImage") {
         images = images.filter((img) => MANGA_CATEGORIES.includes(img.category) || img.runtime);
       }
@@ -4347,7 +4379,7 @@
       });
 
       if (images.length === 0) {
-        body.innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center;">この条件の画像はありません</div>';
+        body.innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center;">オンラインで使える画像がありません。画像ファイル追加、または画像フォルダー読込で参考画像を読み込んでください。</div>';
       }
 
       $("imageGalleryModal").classList.add("open");
@@ -6682,6 +6714,36 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       }
     }
 
+    function isHostedToolPage() {
+      return location.protocol === "http:" || location.protocol === "https:";
+    }
+
+    function isLoopbackServerUrl(raw) {
+      try {
+        const parsed = new URL(String(raw || ""));
+        const host = parsed.hostname.toLowerCase();
+        return host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0" || host === "::1";
+      } catch {
+        return false;
+      }
+    }
+
+    function normalizeServerUrl(raw) {
+      try {
+        const parsed = new URL(String(raw || "").trim());
+        parsed.pathname = parsed.pathname.replace(/\/x-callback\/?$/i, "").replace(/\/+$/g, "");
+        parsed.search = "";
+        parsed.hash = "";
+        return parsed.pathname && parsed.pathname !== "/" ? parsed.toString().replace(/\/$/, "") : parsed.origin;
+      } catch {
+        return "";
+      }
+    }
+
+    function shouldUseHostedServerUrl(raw) {
+      return isHostedToolPage() && (!raw || isLoopbackServerUrl(raw));
+    }
+
     function scheduleServerUrl() {
       return xCloudServerUrl() || xLocalServerUrl();
     }
@@ -6695,20 +6757,16 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
 
     function xLocalServerUrl() {
       const raw = ($("xLocalServerUrl")?.value || localStorage.getItem(X_LOCAL_SERVER_URL_KEY) || defaultScheduleServerUrl()).trim();
-      try {
-        const parsed = new URL(raw);
-        parsed.pathname = parsed.pathname.replace(/\/x-callback\/?$/i, "").replace(/\/+$/g, "");
-        parsed.search = "";
-        parsed.hash = "";
-        return parsed.pathname && parsed.pathname !== "/" ? parsed.toString().replace(/\/$/, "") : parsed.origin;
-      } catch {
-        return defaultScheduleServerUrl();
-      }
+      if (shouldUseHostedServerUrl(raw)) return defaultScheduleServerUrl();
+      return normalizeServerUrl(raw) || defaultScheduleServerUrl();
     }
 
     function loadXLocalServerUrl() {
       if (!$("xLocalServerUrl")) return;
-      $("xLocalServerUrl").value = localStorage.getItem(X_LOCAL_SERVER_URL_KEY) || defaultScheduleServerUrl();
+      const stored = localStorage.getItem(X_LOCAL_SERVER_URL_KEY) || "";
+      const url = shouldUseHostedServerUrl(stored) ? defaultScheduleServerUrl() : (normalizeServerUrl(stored) || defaultScheduleServerUrl());
+      $("xLocalServerUrl").value = url;
+      if (isHostedToolPage()) localStorage.setItem(X_LOCAL_SERVER_URL_KEY, url);
       loadXCloudServerUrl();
     }
 
@@ -9061,6 +9119,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       const character = d.character || val("character") || "ヴェル13世";
       const payload = { referencePaths: [], referenceDataUrls: [], referenceLabels: [] };
       const seen = new Set();
+      const hostedMissingImages = [];
       for (const rawPath of imageReferenceRawValues(d)) {
         const path = String(rawPath || "").trim();
         if (!path) continue;
@@ -9091,6 +9150,20 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
           continue;
         }
 
+        if (serverRuntimeIdFromPath(path)) {
+          const image = selectedImage || Object.keys(characterData).map((name) => findImageByPath(path, name)).find(Boolean);
+          if (!image?.dataUrl) {
+            throw new Error(`オンライン保存の参考画像を読み込めませんでした: ${image?.name || path}`);
+          }
+          const baseName = image.name || `runtime-reference-${payload.referenceDataUrls.length + 1}.png`;
+          payload.referenceDataUrls.push({
+            dataUrl: image.dataUrl,
+            filename: referenceFilenameWithLabel(baseName, label, `runtime-reference-${payload.referenceDataUrls.length + 1}.png`),
+            label
+          });
+          continue;
+        }
+
         const persistedId = persistedRuntimeIdFromPath(path);
         if (persistedId) {
           const image = findImageByPath(path, character) || await getPersistedRuntimeImage(persistedId);
@@ -9116,8 +9189,17 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
           continue;
         }
 
+        if (isHostedToolPage()) {
+          const missingName = selectedImage?.name || path;
+          hostedMissingImages.push(missingName);
+          continue;
+        }
+
         payload.referencePaths.push(path);
         payload.referenceLabels.push(label);
+      }
+      if (hostedMissingImages.length) {
+        throw new Error(`オンライン版ではPC/Obsidian内の画像パスは直接使えません。キャラ画像を「画像を読み込む」でオンライン保存して、その画像を参考画像に選び直してください。未保存の参考画像: ${hostedMissingImages.slice(0, 4).join(" / ")}`);
       }
       return payload;
     }
@@ -9158,7 +9240,10 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
 
     async function callOpenAIImage(apiKey, prompt, d = null, referencePayload = null) {
       const references = referencePayload || (d ? await imageReferencePayload(d) : { referencePaths: [], referenceDataUrls: [] });
-      if (imageReferenceCount(references)) {
+      if (!imageReferenceCount(references)) {
+        throw new Error("参考画像がセットされていません。キャラクター画像を読み込んで参考画像に選択してから、もう一度生成してください。");
+      }
+      if (isHostedToolPage() || imageReferenceCount(references)) {
         return await callOpenAIImageWithReferences(apiKey, prompt, d, references);
       }
       const body = {

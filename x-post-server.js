@@ -1573,10 +1573,50 @@ async function generateOpenAIImageWithReferences(payload) {
     ...referenceImageFiles(payload.referencePaths, payload.referenceLabels),
     ...referenceDataUrlFiles(payload.referenceDataUrls)
   ].slice(0, 16);
-  if (!files.length) throw new Error("No reference image was selected.");
 
   const model = String(payload.model || "gpt-image-1.5").trim();
   const outputFormat = String(payload.output_format || "png").trim() || "png";
+  if (!files.length) {
+    const response = await fetch("https://api.openai.com/v1/images/generations", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model,
+        prompt,
+        n: 1,
+        size: String(payload.size || "1024x1536"),
+        quality: String(payload.quality || "auto"),
+        output_format: outputFormat
+      })
+    });
+    const requestId = response.headers.get("x-request-id") || response.headers.get("openai-request-id") || "";
+    const text = await response.text();
+    let json = {};
+    try {
+      json = text ? JSON.parse(text) : {};
+    } catch {
+      json = { raw: text };
+    }
+    if (!response.ok) {
+      const message = json.error?.message || json.message || json.detail || json.raw || `OpenAI image generation error: ${response.status}`;
+      const error = new Error(message);
+      error.status = response.status;
+      error.body = json;
+      error.requestId = requestId;
+      throw error;
+    }
+    const first = json.data && json.data[0];
+    if (!first) throw new Error("OpenAI image generation returned no image.");
+    const dataUrl = first.b64_json
+      ? `data:image/${outputFormat};base64,${first.b64_json}`
+      : first.url || "";
+    if (!dataUrl) throw new Error("OpenAI image generation returned no image data.");
+    return { imageDataUrl: dataUrl, requestId, usedReferences: [] };
+  }
+
   const form = new FormData();
   form.append("model", model);
   form.append("prompt", prompt);
