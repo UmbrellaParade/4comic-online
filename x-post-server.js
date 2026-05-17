@@ -18,11 +18,12 @@ const PUBLIC_BASE_URL = String(
   process.env.PUBLIC_BASE_URL
   || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "")
 ).replace(/\/+$/, "");
-const MAX_BODY_BYTES = 25 * 1024 * 1024;
+const MAX_BODY_BYTES = 60 * 1024 * 1024;
 function resolveWritableDataDir() {
   const candidates = [
     process.env.DATA_DIR,
     process.env.RAILWAY_VOLUME_MOUNT_PATH,
+    ONLINE_MODE ? "/data" : "",
     ONLINE_MODE ? path.join(process.cwd(), "data") : __dirname,
     path.join(os.tmpdir(), "umbrella-parade-manga-online")
   ].filter(Boolean);
@@ -50,6 +51,7 @@ const SCHEDULE_PATH = path.join(DATA_DIR, "x-scheduled-posts.json");
 const IMPORT_DIRS_PATH = path.join(DATA_DIR, "manga-import-directories.json");
 const OAUTH_TOKENS_PATH = path.join(DATA_DIR, "x-oauth-tokens.json");
 const RUNTIME_IMAGES_PATH = path.join(DATA_DIR, "runtime-images.json");
+const CLIENT_STATE_PATH = path.join(DATA_DIR, "client-state.json");
 const SEED_IDEA_STOCK_PATH = path.join(__dirname, "seed-idea-stock.json");
 const GITHUB_WORKFLOWS_DIR = path.join(__dirname, ".github", "workflows");
 const GIT_DIR = path.join(__dirname, ".git");
@@ -1226,6 +1228,50 @@ function writeRuntimeImages(images) {
   writeJsonFile(RUNTIME_IMAGES_PATH, Array.isArray(images) ? images : []);
 }
 
+function clientStateAllowedKey(key) {
+  return /^umbrellaManga(ImageSet|ImagePatterns|SelectedImagePattern)_/.test(String(key || ""));
+}
+
+function readClientState() {
+  const state = readJsonFile(CLIENT_STATE_PATH, {});
+  return state && typeof state === "object" && !Array.isArray(state) ? state : {};
+}
+
+function writeClientState(state) {
+  writeJsonFile(CLIENT_STATE_PATH, state && typeof state === "object" ? state : {});
+}
+
+function clientStateValue(entry) {
+  return entry && typeof entry === "object" && Object.prototype.hasOwnProperty.call(entry, "value")
+    ? entry.value
+    : entry;
+}
+
+async function handleGetClientState(req, res, requestUrl) {
+  const key = String(requestUrl.searchParams.get("key") || "").trim();
+  if (!clientStateAllowedKey(key)) throw new Error("この設定キーはオンライン保存できません。");
+  const state = readClientState();
+  const has = Object.prototype.hasOwnProperty.call(state, key);
+  sendJson(res, 200, { ok: true, key, has, value: has ? clientStateValue(state[key]) : null });
+}
+
+async function handleSaveClientState(req, res) {
+  const payload = JSON.parse(await readBody(req) || "{}");
+  const key = String(payload.key || "").trim();
+  if (!clientStateAllowedKey(key)) throw new Error("この設定キーはオンライン保存できません。");
+  const state = readClientState();
+  if (payload.delete === true) {
+    delete state[key];
+  } else {
+    state[key] = {
+      value: payload.value ?? null,
+      updatedAt: new Date().toISOString()
+    };
+  }
+  writeClientState(state);
+  sendJson(res, 200, { ok: true, key, deleted: payload.delete === true });
+}
+
 function publicRuntimeImage(image) {
   return {
     id: image.id || "",
@@ -2383,6 +2429,26 @@ const server = http.createServer(async (req, res) => {
         error: error.message || "WordPress予約日時更新でエラーが起きました。",
         detail: error.body || null
       });
+    }
+    return;
+  }
+
+  if (req.method === "GET" && requestUrl.pathname === "/client-state") {
+    try {
+      await handleGetClientState(req, res, requestUrl);
+    } catch (error) {
+      rememberError(error, { route: "/client-state" });
+      sendJson(res, error.status || 500, { ok: false, error: error.message || "Client state read error." });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && requestUrl.pathname === "/client-state") {
+    try {
+      await handleSaveClientState(req, res);
+    } catch (error) {
+      rememberError(error, { route: "/client-state" });
+      sendJson(res, error.status || 500, { ok: false, error: error.message || "Client state save error." });
     }
     return;
   }

@@ -3606,7 +3606,7 @@
     }
 
     async function loadServerRuntimeImages() {
-      const response = await fetch(`${xLocalServerUrl()}/runtime-images`, { method: "GET" });
+      const response = await fetch(`${scheduleServerUrl()}/runtime-images`, { method: "GET" });
       const json = await response.json().catch(() => ({}));
       if (!response.ok || !json.ok) throw new Error(json.error || `HTTP ${response.status}`);
       (Array.isArray(json.images) ? json.images : []).forEach((image) => {
@@ -3619,21 +3619,25 @@
     }
 
     async function uploadRuntimeImagesToServer(character, images) {
-      const response = await fetch(`${xLocalServerUrl()}/runtime-images`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ character, images })
-      });
-      const json = await response.json().catch(() => ({}));
-      if (!response.ok || !json.ok) throw new Error(json.error || `HTTP ${response.status}`);
-      return (Array.isArray(json.images) ? json.images : [])
-        .map(normalizeServerRuntimeImage)
-        .filter(Boolean);
+      const saved = [];
+      for (const image of images || []) {
+        const response = await fetch(`${scheduleServerUrl()}/runtime-images`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ character, images: [image] })
+        });
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok || !json.ok) throw new Error(json.error || `HTTP ${response.status}`);
+        saved.push(...(Array.isArray(json.images) ? json.images : [])
+          .map(normalizeServerRuntimeImage)
+          .filter(Boolean));
+      }
+      return saved;
     }
 
     async function deleteServerRuntimeImage(id, character = val("character") || "ヴェル13世") {
       if (!id) return;
-      const response = await fetch(`${xLocalServerUrl()}/runtime-images/delete`, {
+      const response = await fetch(`${scheduleServerUrl()}/runtime-images/delete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, character })
@@ -3912,6 +3916,44 @@
       return `umbrellaMangaImageSet_${character || "ヴェル13世"}`;
     }
 
+    function onlineStateAvailable() {
+      return isHostedToolPage() || !!xCloudServerUrl();
+    }
+
+    function serverStateAllowedKey(key) {
+      return /^umbrellaManga(ImageSet|ImagePatterns|SelectedImagePattern)_/.test(String(key || ""));
+    }
+
+    async function saveServerClientState(key, value) {
+      if (!onlineStateAvailable() || !serverStateAllowedKey(key)) return false;
+      const response = await fetch(`${scheduleServerUrl()}/client-state`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, value })
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json.ok) throw new Error(json.error || `HTTP ${response.status}`);
+      return true;
+    }
+
+    async function readServerClientState(key) {
+      if (!onlineStateAvailable() || !serverStateAllowedKey(key)) return null;
+      const response = await fetch(`${scheduleServerUrl()}/client-state?key=${encodeURIComponent(key)}`, { method: "GET" });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json.ok) throw new Error(json.error || `HTTP ${response.status}`);
+      return json.has ? json.value : null;
+    }
+
+    function syncServerClientState(key, value) {
+      saveServerClientState(key, value).catch((error) => {
+        console.warn("オンライン設定保存に失敗しました。", error);
+      });
+    }
+
+    function imageSetHasValue(set) {
+      return !!set && IMAGE_SET_IDS.some((id) => !!set[id]);
+    }
+
     function currentImageSet() {
       const set = {};
       IMAGE_SET_IDS.forEach((id) => { set[id] = val(id); });
@@ -3938,7 +3980,9 @@
 
     function saveCharacterImageSet(showMessage = true) {
       const character = val("character") || "ヴェル13世";
-      localStorage.setItem(imageSetKey(character), JSON.stringify(currentImageSet()));
+      const set = currentImageSet();
+      localStorage.setItem(imageSetKey(character), JSON.stringify(set));
+      syncServerClientState(imageSetKey(character), set);
       updateImageSetStatus();
       if (showMessage) {
         $("statusText").textContent = `${character}の画像セットを保存しました。`;
@@ -3958,9 +4002,56 @@
       return ok;
     }
 
+    async function restoreCharacterImageSetFromServer(character = val("character"), showMessage = false) {
+      const target = character || "ヴェル13世";
+      try {
+        const set = await readServerClientState(imageSetKey(target));
+        if (!imageSetHasValue(set)) return false;
+        localStorage.setItem(imageSetKey(target), JSON.stringify(set));
+        const ok = applyImageSet(set);
+        updateImageSetStatus();
+        if (showMessage) {
+          $("statusText").textContent = ok
+            ? `${target}の画像セットをオンライン保存から復元しました。`
+            : `${target}の画像セットはオンラインにありますが、画像本体がまだ読み込めません。`;
+          setTimeout(() => $("statusText").textContent = "", 2200);
+        }
+        return ok;
+      } catch (error) {
+        console.warn("オンライン画像セット復元に失敗しました。", error);
+        return false;
+      }
+    }
+
+    async function restoreImagePatternStateFromServer(character = val("character")) {
+      const target = character || "ヴェル13世";
+      try {
+        const [patterns, selected] = await Promise.all([
+          readServerClientState(imagePatternKey(target)),
+          readServerClientState(selectedImagePatternKey(target))
+        ]);
+        if (patterns && typeof patterns === "object") {
+          localStorage.setItem(imagePatternKey(target), JSON.stringify(patterns));
+        }
+        if (selected) {
+          localStorage.setItem(selectedImagePatternKey(target), String(selected));
+        }
+        return true;
+      } catch (error) {
+        console.warn("オンライン画像パターン復元に失敗しました。", error);
+        return false;
+      }
+    }
+
+    async function restoreImageSelectionStateFromServer(character = val("character")) {
+      await restoreImagePatternStateFromServer(character);
+      return await restoreCharacterImageSetFromServer(character, false);
+    }
+
     function clearCharacterImageSet() {
       const character = val("character") || "ヴェル13世";
       localStorage.removeItem(imageSetKey(character));
+      syncServerClientState(imageSetKey(character), {});
       updateImageSetStatus();
       $("statusText").textContent = `${character}の保存セットを削除しました。`;
       setTimeout(() => $("statusText").textContent = "", 1800);
@@ -3994,6 +4085,7 @@
 
     function writeImagePatterns(character, patterns) {
       localStorage.setItem(imagePatternKey(character), JSON.stringify(patterns || {}));
+      syncServerClientState(imagePatternKey(character), patterns || {});
     }
 
     function currentImagePatternName() {
@@ -4043,6 +4135,7 @@
       };
       writeImagePatterns(character, patterns);
       localStorage.setItem(selectedImagePatternKey(character), name);
+      syncServerClientState(selectedImagePatternKey(character), name);
       $("imagePatternName").value = name;
       renderImagePatternSelect();
       saveCharacterImageSet(false);
@@ -4066,6 +4159,7 @@
       $("imagePatternName").value = pattern.name || name;
       $("imagePatternSelect").value = name;
       localStorage.setItem(selectedImagePatternKey(character), name);
+      syncServerClientState(selectedImagePatternKey(character), name);
       saveCharacterImageSet(false);
       updateImagePatternStatus();
       render();
@@ -4088,6 +4182,7 @@
       writeImagePatterns(character, patterns);
       if (localStorage.getItem(selectedImagePatternKey(character)) === name) {
         localStorage.removeItem(selectedImagePatternKey(character));
+        syncServerClientState(selectedImagePatternKey(character), "");
       }
       $("imagePatternName").value = "";
       renderImagePatternSelect();
@@ -10389,7 +10484,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       if (val("scheduledTime")) localStorage.setItem(LAST_TIME_KEY, val("scheduledTime"));
     });
     $("calendarMonth").addEventListener("change", renderCalendar);
-    $("character").addEventListener("change", () => {
+    $("character").addEventListener("change", async () => {
       const character = setActiveCharacter(val("character") || "ヴェル13世");
       saveSubCharacterSelection(activeScheduleCharacter || "ヴェル13世");
       saveSnsTextSettings(activeSnsSettingsCharacter || activeScheduleCharacter || "ヴェル13世");
@@ -10400,6 +10495,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       restoreScheduledDateForCharacter(character);
       $("imagePatternName").value = "";
       if ($("imagePatternSelect")) $("imagePatternSelect").value = "";
+      await restoreImageSelectionStateFromServer(character);
       updateProfilePanel();
       applyCharacterTemplateDefaults(character);
       loadSnsTextSettings(character);
@@ -10950,6 +11046,7 @@ ${optionalOutput ? optionalOutput + "\n" : ""}  "p1": "1コマ目のセリフや
       await preloadImageDownloadDirectoryHandles();
       await refreshImageDownloadFolderDisplay(val("character") || "ヴェル13世");
       await refreshServerImportDirectoryState(activeScheduleCharacter, false);
+      await restoreImageSelectionStateFromServer(startupCharacter);
       updateProfilePanel();
       applyCharacterTemplateDefaults(startupCharacter);
       loadSnsTextSettings(startupCharacter);
