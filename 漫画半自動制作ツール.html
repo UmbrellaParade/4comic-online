@@ -6947,6 +6947,15 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       return location.protocol === "http:" || location.protocol === "https:";
     }
 
+    function shouldUseSameOriginScheduleServer() {
+      if (!isHostedToolPage()) return false;
+      const host = String(location.hostname || "").toLowerCase();
+      return host === "localhost"
+        || host === "127.0.0.1"
+        || host.endsWith(".up.railway.app")
+        || host.includes("railway.app");
+    }
+
     function isLoopbackServerUrl(raw) {
       try {
         const parsed = new URL(String(raw || ""));
@@ -6966,6 +6975,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     }
 
     function scheduleServerUrl() {
+      if (shouldUseSameOriginScheduleServer()) return defaultScheduleServerUrl();
       return xCloudServerUrl() || xLocalServerUrl();
     }
 
@@ -7001,7 +7011,12 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
 
     function loadXCloudServerUrl() {
       if (!$("xCloudServerUrl")) return;
-      const stored = localStorage.getItem(X_CLOUD_SERVER_URL_KEY) || "";
+      const stored = shouldUseSameOriginScheduleServer()
+        ? defaultScheduleServerUrl()
+        : (localStorage.getItem(X_CLOUD_SERVER_URL_KEY) || "");
+      if (shouldUseSameOriginScheduleServer()) {
+        localStorage.setItem(X_CLOUD_SERVER_URL_KEY, stored);
+      }
       $("xCloudServerUrl").value = stored;
       updateXCloudServerStatus();
     }
