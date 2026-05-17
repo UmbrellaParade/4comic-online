@@ -6726,16 +6726,29 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       return "";
     }
 
-    function xCloudServerUrl() {
-      const raw = ($("xCloudServerUrl")?.value || localStorage.getItem(X_CLOUD_SERVER_URL_KEY) || "").trim();
-      if (!raw) return "";
+    function normalizeScheduleServerUrl(raw) {
+      const value = String(raw || "").trim();
+      if (!value) return "";
       try {
-        const parsed = new URL(raw);
-        parsed.pathname = parsed.pathname.replace(/\/x-callback\/?$/i, "").replace(/\/+$/g, "");
-        return parsed.toString().replace(/\/$/, "");
+        const parsed = new URL(value);
+        parsed.pathname = parsed.pathname
+          .replace(/\/x-callback\/?$/i, "")
+          .replace(/\/oauth\/[^/]+\/?$/i, "")
+          .replace(/\/tool\/?$/i, "")
+          .replace(/\/index\.html?$/i, "")
+          .replace(/\/+$/g, "");
+        parsed.search = "";
+        parsed.hash = "";
+        return parsed.pathname && parsed.pathname !== "/" ? parsed.toString().replace(/\/$/, "") : parsed.origin;
       } catch {
         return "";
       }
+    }
+
+    function xCloudServerUrl() {
+      const raw = ($("xCloudServerUrl")?.value || localStorage.getItem(X_CLOUD_SERVER_URL_KEY) || "").trim();
+      if (!raw) return "";
+      return normalizeScheduleServerUrl(raw);
     }
 
     function isHostedToolPage() {
@@ -6753,15 +6766,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     }
 
     function normalizeServerUrl(raw) {
-      try {
-        const parsed = new URL(String(raw || "").trim());
-        parsed.pathname = parsed.pathname.replace(/\/x-callback\/?$/i, "").replace(/\/+$/g, "");
-        parsed.search = "";
-        parsed.hash = "";
-        return parsed.pathname && parsed.pathname !== "/" ? parsed.toString().replace(/\/$/, "") : parsed.origin;
-      } catch {
-        return "";
-      }
+      return normalizeScheduleServerUrl(raw);
     }
 
     function shouldUseHostedServerUrl(raw) {
