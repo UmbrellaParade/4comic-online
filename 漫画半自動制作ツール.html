@@ -5208,6 +5208,7 @@ ${text}`;
     const SEED_IDEA_STOCK_IMPORTED_KEY = "umbrellaMangaSeedIdeaStockImportedIds";
     const ACTIVE_MANGA_IDEA_KEY = "umbrellaMangaActiveIdeaId";
     const ACTIVE_IDEA_DRAFT_KEY = "umbrellaMangaActiveIdeaDraft";
+    const ACTIVE_CHARACTER_KEY = "umbrellaMangaActiveCharacter";
     const IDEA_SUMMARY_RESET_KEY = "umbrellaMangaIdeaSummaryReset";
     const RESERVATION_KEY = "umbrellaMangaReservations";
     const LAST_TIME_KEY = "umbrellaMangaLastScheduledTime";
@@ -5270,6 +5271,27 @@ ${text}`;
       return val("character") || "ヴェル13世";
     }
 
+    function normalizeCharacterName(character) {
+      const name = String(character || "").trim();
+      return characterData[name] ? name : "ヴェル13世";
+    }
+
+    function storedActiveCharacter() {
+      const stored = localStorage.getItem(ACTIVE_CHARACTER_KEY) || "";
+      return stored && characterData[stored] ? stored : "";
+    }
+
+    function setActiveCharacter(character, persist = true) {
+      const target = normalizeCharacterName(character);
+      if ($("character")) $("character").value = target;
+      if (persist) localStorage.setItem(ACTIVE_CHARACTER_KEY, target);
+      return target;
+    }
+
+    function restoreActiveCharacterSelection(fallback = "") {
+      return setActiveCharacter(storedActiveCharacter() || fallback || activeCharacter(), true);
+    }
+
     function sameActiveCharacter(item) {
       return !item || !item.character || item.character === activeCharacter();
     }
@@ -5306,7 +5328,7 @@ ${text}`;
           if ($(id) && payload[id] !== undefined) $(id).checked = payload[id];
         });
         if (payload.character) {
-          activeScheduleCharacter = payload.character;
+          activeScheduleCharacter = setActiveCharacter(payload.character);
           updateProfilePanel();
           loadXAccessToken(payload.character);
           loadWordPressSettings(payload.character);
@@ -10211,6 +10233,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       fields.forEach((id) => payload[id] = $(id).value);
       checks.forEach((id) => payload[id] = $(id).checked);
       payload.subCharacters = selectedSubCharacterNames();
+      if (payload.character) localStorage.setItem(ACTIVE_CHARACTER_KEY, normalizeCharacterName(payload.character));
       saveSubCharacterSelection(val("character") || "ヴェル13世", payload.subCharacters);
       if ($("character") && $("scheduled")) {
         saveScheduledDateForCharacter(activeScheduleCharacter || val("character") || "ヴェル13世", val("scheduled"));
@@ -10235,6 +10258,9 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         });
         if (payload.subCharacters !== undefined) {
           saveSubCharacterSelection(payload.character || val("character") || "ヴェル13世", payload.subCharacters);
+        }
+        if (payload.character && !storedActiveCharacter()) {
+          setActiveCharacter(payload.character, true);
         }
         restoreActiveIdeaDraft();
       } catch {
@@ -10280,7 +10306,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
 
     function setSample(type) {
       if (type === "vel") {
-        $("character").value = "ヴェル13世";
+        setActiveCharacter("ヴェル13世");
         $("title").value = "止まってる日";
         $("subtitle").value = "今日は、なにも進めなかったな。";
         $("theme").value = "未完成でも進む";
@@ -10291,7 +10317,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         $("p4").value = "1つだけ、開いてみるか";
       }
       if (type === "carla") {
-        $("character").value = "カーラ・マンソン";
+        setActiveCharacter("カーラ・マンソン");
         $("title").value = "既読の日";
         $("subtitle").value = "返事がないだけで、心が騒ぐ。";
         $("theme").value = "本音 vs 執着";
@@ -10302,7 +10328,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         $("p4").value = "……もう一回だけ見る";
       }
       if (type === "belbo") {
-        $("character").value = "べるぼ";
+        setActiveCharacter("べるぼ");
         $("title").value = "作る前に疲れる日";
         $("subtitle").value = "AIを開く前に、もう迷ってる。";
         $("theme").value = "創作継続";
@@ -10359,7 +10385,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     });
     $("calendarMonth").addEventListener("change", renderCalendar);
     $("character").addEventListener("change", () => {
-      const character = val("character") || "ヴェル13世";
+      const character = setActiveCharacter(val("character") || "ヴェル13世");
       saveSubCharacterSelection(activeScheduleCharacter || "ヴェル13世");
       saveSnsTextSettings(activeSnsSettingsCharacter || activeScheduleCharacter || "ヴェル13世");
       saveScheduledDateForCharacter(activeScheduleCharacter || character);
@@ -10409,6 +10435,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       clearActiveIdeaDraft();
       fields.forEach((id) => $(id).value = "");
       $("character").value = "ヴェル13世";
+      setActiveCharacter("ヴェル13世");
       $("status").value = "ネタ";
       $("platform").value = "Instagram / X / TikTok";
       $("scheduled").value = today();
@@ -10848,7 +10875,7 @@ ${optionalOutput ? optionalOutput + "\n" : ""}  "p1": "1コマ目のセリフや
           $("ideaHashtags").value = normalizeHashtagText(parsed.ideaHashtags || fallbackIdeaHashtagsFromCurrent());
         }
 
-        saveSnsTextSettings(activeSnsSettingsCharacter || character);
+        saveSnsTextSettings(activeSnsSettingsCharacter || activeCharacter());
         saveActiveIdeaDraft();
         render();
         let stockItem = null;
@@ -10883,8 +10910,10 @@ ${optionalOutput ? optionalOutput + "\n" : ""}  "p1": "1コマ目のセリフや
 
     async function initializeTool() {
       refreshModelOptions();
+      const startupStoredCharacter = storedActiveCharacter();
       loadDraft();
       restoreActiveIdeaDraft();
+      const startupCharacter = restoreActiveCharacterSelection(startupStoredCharacter || val("character") || "ヴェル13世");
       updateImageModelVisibility();
       if (!val("imageModel")) $("imageModel").value = "gpt-image-2";
       if (!val("imageSize")) $("imageSize").value = "1024x1536";
@@ -10892,7 +10921,7 @@ ${optionalOutput ? optionalOutput + "\n" : ""}  "p1": "1コマ目のセリフや
       if (!val("imageFormat")) $("imageFormat").value = "png";
       if (!val("scheduled")) $("scheduled").value = today();
       if (!val("scheduledTime")) $("scheduledTime").value = localStorage.getItem(LAST_TIME_KEY) || "20:00";
-      activeScheduleCharacter = val("character") || "ヴェル13世";
+      activeScheduleCharacter = startupCharacter;
       restoreScheduledDateForCharacter(activeScheduleCharacter, val("scheduled") || today());
       if (!val("calendarMonth")) $("calendarMonth").value = today().slice(0, 7);
       initCollapsibleState();
@@ -10900,9 +10929,9 @@ ${optionalOutput ? optionalOutput + "\n" : ""}  "p1": "1コマ目のセリフや
       loadXLocalServerUrl();
       loadXOAuthSettings();
       loadXAccessToken();
-      loadWordPressSettings(localStorage.getItem(WP_SELECTED_CHARACTER_KEY) || val("character"));
-      loadImageDownloadNameConfig(val("character") || "ヴェル13世");
-      loadImageDownloadFolder(val("character") || "ヴェル13世");
+      loadWordPressSettings(localStorage.getItem(WP_SELECTED_CHARACTER_KEY) || startupCharacter);
+      loadImageDownloadNameConfig(startupCharacter);
+      loadImageDownloadFolder(startupCharacter);
       checkXLocalServerConnection(false);
       refreshXScheduleQueue(false);
       try {
@@ -10917,8 +10946,8 @@ ${optionalOutput ? optionalOutput + "\n" : ""}  "p1": "1コマ目のセリフや
       await refreshImageDownloadFolderDisplay(val("character") || "ヴェル13世");
       await refreshServerImportDirectoryState(activeScheduleCharacter, false);
       updateProfilePanel();
-      applyCharacterTemplateDefaults(val("character") || "ヴェル13世");
-      loadSnsTextSettings(val("character") || "ヴェル13世");
+      applyCharacterTemplateDefaults(startupCharacter);
+      loadSnsTextSettings(startupCharacter);
       await loadSeedIdeaStock();
       renderIdeaStock();
       renderReservations();
