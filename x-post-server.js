@@ -53,6 +53,8 @@ const OAUTH_TOKENS_PATH = path.join(DATA_DIR, "x-oauth-tokens.json");
 const RUNTIME_IMAGES_PATH = path.join(DATA_DIR, "runtime-images.json");
 const CLIENT_STATE_PATH = path.join(DATA_DIR, "client-state.json");
 const SEED_IDEA_STOCK_PATH = path.join(__dirname, "seed-idea-stock.json");
+const SEED_RUNTIME_IMAGES_PATH = path.join(__dirname, "seed-runtime-images.json");
+const SEED_RUNTIME_IMAGES_DIR = path.join(__dirname, "seed-runtime-images");
 const GITHUB_WORKFLOWS_DIR = path.join(__dirname, ".github", "workflows");
 const GIT_DIR = path.join(__dirname, ".git");
 const VAULT_ROOT = process.env.VAULT_ROOT || path.resolve(__dirname, "..", "..", "..", "..");
@@ -1281,8 +1283,39 @@ function publicRuntimeImage(image) {
     category: image.category || "オンライン保存画像",
     dataUrl: image.dataUrl || "",
     createdAt: image.createdAt || "",
-    source: "railway"
+    source: image.source || "railway"
   };
+}
+
+function pathIsInside(parent, child) {
+  const relative = path.relative(parent, child);
+  return relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function readSeedRuntimeImages() {
+  const payload = readJsonFile(SEED_RUNTIME_IMAGES_PATH, { generatedAt: "", images: [] });
+  const images = Array.isArray(payload)
+    ? payload
+    : (Array.isArray(payload.images) ? payload.images : []);
+  const dir = path.resolve(SEED_RUNTIME_IMAGES_DIR);
+  return images
+    .filter((item) => item && typeof item === "object" && item.file)
+    .map((item) => {
+      const filePath = path.resolve(dir, String(item.file || ""));
+      if (!pathIsInside(dir, filePath) || !fs.existsSync(filePath)) return null;
+      const name = String(item.name || path.basename(filePath));
+      const mimeType = mediaTypeFromImageName(name || filePath);
+      return {
+        id: String(item.id || `seed_${path.basename(filePath, path.extname(filePath))}`),
+        character: String(item.character || "").trim(),
+        name,
+        category: String(item.category || "オンライン初期画像").trim() || "オンライン初期画像",
+        dataUrl: `data:${mimeType};base64,${fs.readFileSync(filePath).toString("base64")}`,
+        createdAt: item.createdAt || payload.generatedAt || "",
+        source: "seed"
+      };
+    })
+    .filter(Boolean);
 }
 
 function readSeedIdeaStock() {
@@ -1326,7 +1359,7 @@ function runtimeImageFromPayload(payload, character) {
 
 async function handleListRuntimeImages(req, res, requestUrl) {
   const character = String(requestUrl.searchParams.get("character") || "").trim();
-  const images = readRuntimeImages()
+  const images = [...readSeedRuntimeImages(), ...readRuntimeImages()]
     .filter((image) => !character || image.character === character)
     .map(publicRuntimeImage);
   sendJson(res, 200, { ok: true, images });

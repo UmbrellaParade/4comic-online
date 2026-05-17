@@ -1,0 +1,134 @@
+{
+  "generatedAt": "2026-05-17T11:42:17.993Z",
+  "count": 16,
+  "images": [
+    {
+      "id": "seed_vel13_front",
+      "character": "ヴェル13世",
+      "name": "ヴェル13世 正面.png",
+      "category": "オンライン初期画像/キャラ参考",
+      "file": "vel13/vel-front.png",
+      "createdAt": "2026-05-17T11:42:17.993Z"
+    },
+    {
+      "id": "seed_vel13_turnaround",
+      "character": "ヴェル13世",
+      "name": "ヴェル13世3面図.png",
+      "category": "オンライン初期画像/3面図",
+      "file": "vel13/vel-turnaround.png",
+      "createdAt": "2026-05-17T11:42:17.993Z"
+    },
+    {
+      "id": "seed_vel13_right",
+      "character": "ヴェル13世",
+      "name": "ヴェル13世 右図.png",
+      "category": "オンライン初期画像/角度参考",
+      "file": "vel13/vel-right.png",
+      "createdAt": "2026-05-17T11:42:17.993Z"
+    },
+    {
+      "id": "seed_vel13_left",
+      "character": "ヴェル13世",
+      "name": "ヴェル13世左図.png",
+      "category": "オンライン初期画像/角度参考",
+      "file": "vel13/vel-left.png",
+      "createdAt": "2026-05-17T11:42:17.993Z"
+    },
+    {
+      "id": "seed_vel13_back",
+      "character": "ヴェル13世",
+      "name": "ヴェル13世後ろ図.png",
+      "category": "オンライン初期画像/角度参考",
+      "file": "vel13/vel-back.png",
+      "createdAt": "2026-05-17T11:42:17.993Z"
+    },
+    {
+      "id": "seed_vel13_main_visual",
+      "character": "ヴェル13世",
+      "name": "ヴェル13世メインビジュアル.png",
+      "category": "オンライン初期画像/ビジュアル",
+      "file": "vel13/vel-main-visual.png",
+      "createdAt": "2026-05-17T11:42:17.993Z"
+    },
+    {
+      "id": "seed_carla_3d_design",
+      "character": "カーラ・マンソン",
+      "name": "カーラ・マンソン デザイン3D.png",
+      "category": "オンライン初期画像/キャラ参考",
+      "file": "carla/carla-3d-design.png",
+      "createdAt": "2026-05-17T11:42:17.993Z"
+    },
+    {
+      "id": "seed_carla_chibi_turnaround",
+      "character": "カーラ・マンソン",
+      "name": "カーラ ちびキャラ 3面図まとめ.png",
+      "category": "オンライン初期画像/3面図",
+      "file": "carla/carla-chibi-turnaround.png",
+      "createdAt": "2026-05-17T11:42:17.993Z"
+    },
+    {
+      "id": "seed_carla_chibi_front",
+      "character": "カーラ・マンソン",
+      "name": "カーラ ちびキャラ 正面.png",
+      "category": "オンライン初期画像/角度参考",
+      "file": "carla/carla-chibi-front.png",
+      "createdAt": "2026-05-17T11:42:17.993Z"
+    },
+    {
+      "id": "seed_carla_chibi_left",
+      "character": "カーラ・マンソン",
+      "name": "カーラ ちびキャラ SIDE 左.png",
+      "category": "オンライン初期画像/角度参考",
+      "file": "carla/carla-chibi-left.png",
+      "createdAt": "2026-05-17T11:42:17.993Z"
+    },
+    {
+      "id": "seed_carla_chibi_back",
+      "character": "カーラ・マンソン",
+      "name": "カーラ ちびキャラ バック.png",
+      "category": "オンライン初期画像/角度参考",
+      "file": "carla/carla-chibi-back.png",
+      "createdAt": "2026-05-17T11:42:17.993Z"
+    },
+    {
+      "id": "seed_carla_main_visual",
+      "character": "カーラ・マンソン",
+      "name": "カーラメインビジュアル.png",
+      "category": "オンライン初期画像/ビジュアル",
+      "file": "carla/carla-main-visual.png",
+      "createdAt": "2026-05-17T11:42:17.993Z"
+    },
+    {
+      "id": "seed_carla_visual",
+      "character": "カーラ・マンソン",
+      "name": "カーラビジュアル.png",
+      "category": "オンライン初期画像/ビジュアル",
+      "file": "carla/carla-visual.png",
+      "createdAt": "2026-05-17T11:42:17.993Z"
+    },
+    {
+      "id": "seed_belbo_normal",
+      "character": "べるぼ",
+      "name": "べるぼ通常アイコン.png",
+      "category": "オンライン初期画像/キャラ参考",
+      "file": "belbo/belbo-normal.png",
+      "createdAt": "2026-05-17T11:42:17.993Z"
+    },
+    {
+      "id": "seed_belbo_yossha",
+      "character": "べるぼ",
+      "name": "べるぼ よっしゃー！アイコン.png",
+      "category": "オンライン初期画像/表情参考",
+      "file": "belbo/belbo-yossha.png",
+      "createdAt": "2026-05-17T11:42:17.993Z"
+    },
+    {
+      "id": "seed_belbo_illustration",
+      "character": "べるぼ",
+      "name": "べるぼ イラスト.png",
+      "category": "オンライン初期画像/ビジュアル",
+      "file": "belbo/belbo-illustration.png",
+      "createdAt": "2026-05-17T11:42:17.993Z"
+    }
+  ]
+}
