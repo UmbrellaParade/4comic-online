@@ -3707,11 +3707,31 @@
       }
 
       runtimeImagesByCharacter[character].push(...images);
+      const firstImage = images.find((image) => image && image.path);
+      const firstMangaImage = images.find((image) => image && image.path && imageLooksLikeMangaOutput(image));
+      const shouldSelectReference = !$("referenceImage").value || !imageUsableInHostedTool($("referenceImage").value, character);
+      const shouldSelectMangaReference = !$("mangaRefImage").value || !imageUsableInHostedTool($("mangaRefImage").value, character);
+      if (firstImage && shouldSelectReference) {
+        $("referenceImage").value = firstImage.path;
+      }
+      if (firstMangaImage && shouldSelectMangaReference) {
+        $("mangaRefImage").value = firstMangaImage.path;
+      }
       updateProfilePanel();
+      if (firstImage && shouldSelectReference) {
+        $("referenceImage").value = firstImage.path;
+      }
+      if (firstMangaImage && shouldSelectMangaReference) {
+        $("mangaRefImage").value = firstMangaImage.path;
+      }
+      updatePreview();
+      updateMangaRefPreview();
+      updateAnglePreviews();
+      saveCharacterImageSet(false);
       updateRuntimeImageStatus();
       $("statusText").textContent = savedToServer
-        ? `${character}に画像を${images.length}枚追加し、Railway側に保存しました。`
-        : `${character}に画像を${images.length}枚追加し、このブラウザ内に保存しました。`;
+        ? `${character}に画像を${images.length}枚追加し、Railway側に保存しました。${firstImage ? "キャラ参考画像にもセットしました。" : ""}`
+        : `${character}に画像を${images.length}枚追加し、このブラウザ内に保存しました。${firstImage ? "キャラ参考画像にもセットしました。" : ""}`;
       setTimeout(() => $("statusText").textContent = "", 3000);
     }
 
