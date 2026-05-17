@@ -3582,9 +3582,10 @@
         runtimeImagesByCharacter[image.character] = runtimeImagesByCharacter[image.character] || [];
         runtimeImagesByCharacter[image.character].push({
           ...image,
-          path: persistedRuntimePath(image.id),
+          path: image.serverRuntimeId ? serverRuntimePath(image.serverRuntimeId) : persistedRuntimePath(image.id),
           runtime: true,
           persisted: true,
+          browserBackup: !!image.serverRuntimeId,
         });
       });
     }
@@ -3632,6 +3633,19 @@
           .map(normalizeServerRuntimeImage)
           .filter(Boolean));
       }
+      await Promise.all(saved.map((image) => putPersistedRuntimeImage({
+        id: image.id,
+        serverRuntimeId: image.id,
+        character: image.character || character,
+        name: image.name,
+        localPath: image.localPath || image.name,
+        category: image.category || "オンライン保存画像",
+        runtime: true,
+        persisted: true,
+        browserBackup: true,
+        dataUrl: image.dataUrl || "",
+        createdAt: image.createdAt || new Date().toISOString(),
+      }).catch((error) => console.warn("オンライン画像のブラウザバックアップに失敗しました。", error))));
       return saved;
     }
 
