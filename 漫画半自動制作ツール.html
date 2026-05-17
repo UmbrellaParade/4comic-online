@@ -5263,6 +5263,7 @@ ${text}`;
     ];
     let activeScheduleCharacter = "";
     let activeXOAuthSettingsCharacter = "";
+    let activeWordPressSettingsCharacter = "";
     let latestXScheduleJobs = [];
 
     function activeCharacter() {
@@ -7507,6 +7508,58 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       };
     }
 
+    function defaultWordPressSettings(character = val("character")) {
+      return {
+        siteUrl: WP_DEFAULT_SITE_URL,
+        username: "",
+        appPassword: "",
+        postMode: "future",
+        featuredImageUrl: WP_DEFAULT_FEATURED_IMAGE_URL,
+        seriesTitle: defaultWordPressSeriesTitle(character),
+        postWithX: false,
+        episodeNumber: "",
+        lastEpisodeNumber: ""
+      };
+    }
+
+    function hasLegacyWordPressSettings() {
+      return [
+        WP_SITE_URL_KEY,
+        WP_USERNAME_KEY,
+        WP_APP_PASSWORD_KEY,
+        WP_POST_MODE_KEY,
+        WP_FEATURED_IMAGE_URL_KEY,
+        WP_POST_WITH_X_KEY,
+        WP_LAST_EPISODE_NUMBER_KEY
+      ].some((key) => localStorage.getItem(key) !== null);
+    }
+
+    function clearLegacyWordPressSettings() {
+      [
+        WP_SITE_URL_KEY,
+        WP_USERNAME_KEY,
+        WP_APP_PASSWORD_KEY,
+        WP_POST_MODE_KEY,
+        WP_FEATURED_IMAGE_URL_KEY,
+        WP_POST_WITH_X_KEY,
+        WP_LAST_EPISODE_NUMBER_KEY
+      ].forEach((key) => localStorage.removeItem(key));
+    }
+
+    function migrateLegacyWordPressSettings(character = val("character")) {
+      if (!hasLegacyWordPressSettings()) return;
+      const target = wordpressTargetCharacter(character);
+      const all = readWordPressSettingsByCharacter();
+      if (!all[target]) {
+        all[target] = normalizeWordPressSettings({
+          ...legacyWordPressSettings(),
+          seriesTitle: defaultWordPressSeriesTitle(target)
+        }, target);
+        writeWordPressSettingsByCharacter(all);
+      }
+      clearLegacyWordPressSettings();
+    }
+
     function normalizeWordPressSettings(settings = {}, character = val("character")) {
       return {
         siteUrl: settings.siteUrl || WP_DEFAULT_SITE_URL,
@@ -7537,8 +7590,9 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
 
     function wordpressSettingsForCharacter(character = val("character")) {
       const target = wordpressTargetCharacter(character);
+      migrateLegacyWordPressSettings(target);
       const all = readWordPressSettingsByCharacter();
-      return normalizeWordPressSettings({ ...legacyWordPressSettings(), ...(all[target] || {}) }, target);
+      return normalizeWordPressSettings({ ...defaultWordPressSettings(target), ...(all[target] || {}) }, target);
     }
 
     function writeWordPressSettingsForCharacter(character, settings) {
@@ -7547,15 +7601,6 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       const normalized = normalizeWordPressSettings(settings, target);
       all[target] = normalized;
       writeWordPressSettingsByCharacter(all);
-      if (target === wordpressTargetCharacter(val("character"))) {
-        localStorage.setItem(WP_SITE_URL_KEY, normalized.siteUrl);
-        localStorage.setItem(WP_USERNAME_KEY, normalized.username);
-        localStorage.setItem(WP_APP_PASSWORD_KEY, normalized.appPassword);
-        localStorage.setItem(WP_POST_MODE_KEY, normalized.postMode);
-        localStorage.setItem(WP_FEATURED_IMAGE_URL_KEY, normalized.featuredImageUrl);
-        localStorage.setItem(WP_POST_WITH_X_KEY, normalized.postWithX ? "true" : "false");
-        if (normalized.lastEpisodeNumber) localStorage.setItem(WP_LAST_EPISODE_NUMBER_KEY, normalized.lastEpisodeNumber);
-      }
       return normalized;
     }
 
@@ -7576,6 +7621,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       }
       select.value = target;
       localStorage.setItem(WP_SELECTED_CHARACTER_KEY, target);
+      activeWordPressSettingsCharacter = target;
     }
 
     function loadWordPressSettings(character = selectedWordPressSettingsCharacter()) {
@@ -10318,6 +10364,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       saveSnsTextSettings(activeSnsSettingsCharacter || activeScheduleCharacter || "ヴェル13世");
       saveScheduledDateForCharacter(activeScheduleCharacter || character);
       saveXOAuthSettings(false, activeXOAuthSettingsCharacter || activeScheduleCharacter || "ヴェル13世");
+      if (activeWordPressSettingsCharacter) autosaveWordPressSettings(activeWordPressSettingsCharacter);
       activeScheduleCharacter = character;
       restoreScheduledDateForCharacter(character);
       $("imagePatternName").value = "";
@@ -10473,7 +10520,9 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     $("saveXOAuthConfig").addEventListener("click", () => saveXOAuthSettings(true));
     ["xOAuthClientId", "xOAuthClientSecret"].forEach((id) => {
       const input = $(id);
-      if (input) input.addEventListener("change", () => saveXOAuthSettings(false));
+      if (!input) return;
+      input.addEventListener("input", () => saveXOAuthSettings(false));
+      input.addEventListener("change", () => saveXOAuthSettings(false));
     });
     $("startXOAuthLogin").addEventListener("click", startXOAuthLogin);
     $("checkXOAuthResult").addEventListener("click", () => checkXOAuthResult(true));
@@ -10492,20 +10541,20 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     $("showXLastError").addEventListener("click", showXLastError);
     $("refreshXScheduleQueue").addEventListener("click", () => refreshXScheduleQueue(true));
     $("wpSettingsCharacter").addEventListener("change", () => {
-      const previous = localStorage.getItem(WP_SELECTED_CHARACTER_KEY) || val("character") || "ヴェル13世";
+      const previous = activeWordPressSettingsCharacter || localStorage.getItem(WP_SELECTED_CHARACTER_KEY) || val("character") || "ヴェル13世";
       autosaveWordPressSettings(previous);
       loadWordPressSettings($("wpSettingsCharacter").value || val("character"));
     });
     ["wpSiteUrl", "wpUsername", "wpApplicationPassword", "wpPostMode", "wpFeaturedImageUrl", "wpSeriesTitle", "wpEpisodeNumber"].forEach((id) => {
       const input = $(id);
       if (!input) return;
-      input.addEventListener("input", () => autosaveWordPressSettings());
-      input.addEventListener("change", () => autosaveWordPressSettings());
+      input.addEventListener("input", () => autosaveWordPressSettings(activeWordPressSettingsCharacter || selectedWordPressSettingsCharacter()));
+      input.addEventListener("change", () => autosaveWordPressSettings(activeWordPressSettingsCharacter || selectedWordPressSettingsCharacter()));
     });
     if ($("wpPostWithX")) {
-      $("wpPostWithX").addEventListener("change", () => autosaveWordPressSettings());
+      $("wpPostWithX").addEventListener("change", () => autosaveWordPressSettings(activeWordPressSettingsCharacter || selectedWordPressSettingsCharacter()));
     }
-    $("saveWpSettings").addEventListener("click", () => saveWordPressSettings(true));
+    $("saveWpSettings").addEventListener("click", () => saveWordPressSettings(true, activeWordPressSettingsCharacter || selectedWordPressSettingsCharacter()));
     $("checkWpConnection").addEventListener("click", checkWordPressConnection);
     $("postReservationToWp").addEventListener("click", postSelectedReservationToWordPress);
     $("sendReservationObsidian").addEventListener("click", sendReservationsToObsidian);
