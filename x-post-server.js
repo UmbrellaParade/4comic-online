@@ -1174,8 +1174,11 @@ function friendlyWordPressErrorMessage(message) {
   if (/rest_cannot_create|rest_cannot_edit|401|Unauthorized/i.test(text)) {
     return "WordPressの認証に失敗しました。ユーザー名とApplication Passwordを確認してください。";
   }
-  if (/rest_invalid_param|not registered|meta/i.test(text)) {
+  if (/(Invalid parameter\(s\):\s*meta|[?&]meta=|(^|[^a-z])meta([^a-z]|$)|swell_meta_|ssp_meta_|og_image|opengraph|not registered)/i.test(text)) {
     return "WordPress投稿は作成できましたが、SWELL/OGPメタ設定の一部をREST APIが受け付けない可能性があります。";
+  }
+  if (/rest_invalid_param/i.test(text)) {
+    return `WordPress REST APIが一部のパラメータを受け付けませんでした: ${text}`;
   }
   return text;
 }
@@ -1965,9 +1968,15 @@ function wordpressDateLocal(value, fallbackUtc = "") {
 async function handleCheckWordPress(req, res) {
   const payload = JSON.parse(await readBody(req) || "{}");
   const { siteUrl, username, appPassword } = resolveWordPressCredentials(payload);
-  const user = await wordpressJson(siteUrl, username, appPassword, "/users/me", {
-    params: { context: "edit" }
-  });
+  let user;
+  try {
+    user = await wordpressJson(siteUrl, username, appPassword, "/users/me", {
+      params: { context: "edit" }
+    });
+  } catch (error) {
+    if (!/context|rest_invalid_param|rest_forbidden_context|403|400/i.test(`${error.message || ""} ${error.status || ""}`)) throw error;
+    user = await wordpressJson(siteUrl, username, appPassword, "/users/me");
+  }
   sendJson(res, 200, { ok: true, user: { id: user.id, name: user.name, slug: user.slug } });
 }
 

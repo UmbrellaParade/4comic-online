@@ -7759,7 +7759,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       saveWordPressSettings(false);
       try {
         setWpStatus("WordPressへ接続確認中です。");
-        const response = await fetch(`${xLocalServerUrl()}/check-wordpress`, {
+        const response = await fetch(`${scheduleServerUrl()}/check-wordpress`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(wordpressSettingsPayload(selectedWordPressSettingsCharacter()))
@@ -7769,7 +7769,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         setWpStatus(`WordPress接続OK: ${json.user?.name || json.user?.slug || "ユーザー確認済み"}`);
       } catch (error) {
         const message = error.message && error.message.includes("Failed to fetch")
-          ? "ローカル投稿サーバーへ接続できませんでした。X投稿サーバー起動.batを起動してください。"
+          ? "投稿サーバーへ接続できませんでした。オンライン版URL/クラウドURL、またはX投稿サーバー起動.batを確認してください。"
           : error.message;
         setWpStatus(`WordPress接続エラー: ${message}`, "err");
       }
@@ -7787,7 +7787,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       const wpSettings = wordpressSettingsForUse(targetCharacter);
       const scheduledAt = reservationScheduledAt(item);
       const scheduledLocal = reservationScheduledLocal(item);
-      const response = await fetch(`${xLocalServerUrl()}/update-wordpress-schedule`, {
+      const response = await fetch(`${scheduleServerUrl()}/update-wordpress-schedule`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -7848,7 +7848,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
           showAuthor: "hide"
         }
       };
-      const response = await fetch(`${xLocalServerUrl()}/post-wordpress`, {
+      const response = await fetch(`${scheduleServerUrl()}/post-wordpress`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
