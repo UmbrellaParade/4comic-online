@@ -7918,6 +7918,25 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       return normalized;
     }
 
+    function advanceWordPressEpisodeNumber(character, usedEpisode) {
+      const target = wordpressTargetCharacter(character);
+      const used = Number(String(usedEpisode || "").replace(/[^0-9]/g, ""));
+      if (!Number.isFinite(used) || used <= 0) return wordpressSettingsForCharacter(target);
+      const settings = wordpressSettingsForCharacter(target);
+      const currentNext = Number(String(settings.episodeNumber || "").replace(/[^0-9]/g, ""));
+      const nextEpisode = String(Math.max(Number.isFinite(currentNext) && currentNext > 0 ? currentNext : 0, used + 1));
+      const updated = writeWordPressSettingsForCharacter(target, {
+        ...settings,
+        lastEpisodeNumber: String(used),
+        episodeNumber: nextEpisode
+      });
+      if (target === selectedWordPressSettingsCharacter()) {
+        if ($("wpEpisodeNumber")) $("wpEpisodeNumber").value = updated.episodeNumber;
+        updateWordPressTitlePreview(target, updated);
+      }
+      return updated;
+    }
+
     function wordpressPostStatus(character = val("character"), settings = null) {
       const wpSettings = settings || wordpressSettingsForUse(character);
       return wpSettings.postMode || "future";
@@ -8067,12 +8086,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       const json = await response.json().catch(() => ({}));
       if (!response.ok || !json.ok) throw new Error(json.error || stringifyXDetail(json.detail) || `HTTP ${response.status}`);
       if (!updatingExistingPost) {
-        wpSettings.lastEpisodeNumber = episode;
-        wpSettings.episodeNumber = String(Number(episode) + 1);
-        writeWordPressSettingsForCharacter(targetCharacter, wpSettings);
-        if (targetCharacter === wordpressTargetCharacter(val("character")) && $("wpEpisodeNumber")) {
-          $("wpEpisodeNumber").value = wpSettings.episodeNumber;
-        }
+        advanceWordPressEpisodeNumber(targetCharacter, episode);
       }
       updateReservationById(item.id, {
         wpPostId: json.post.id,
@@ -8083,7 +8097,6 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         wpEpisodeNumber: episode,
         wpWarnings: (json.warnings || []).join(" / ")
       });
-      if (!updatingExistingPost && $("wpEpisodeNumber")) $("wpEpisodeNumber").value = String(Number(episode) + 1);
       if (!silent) {
         const warning = json.warnings && json.warnings.length ? `（注意: ${json.warnings.join(" / ")}）` : "";
         setWpStatus(`WordPress投稿を作成しました: ${json.post.link || `ID ${json.post.id}`} ${warning}`);
