@@ -901,6 +901,61 @@ async function handleCancelScheduleX(req, res) {
   sendJson(res, 200, { ok: true, job: cancelled, gitPush });
 }
 
+async function handlePostScheduleNow(req, res) {
+  const raw = await readBody(req);
+  const payload = JSON.parse(raw || "{}");
+  const scheduleJobId = String(payload.scheduleJobId || payload.id || "").trim();
+  const reservationId = String(payload.reservationId || "").trim();
+  const queue = readScheduleQueue();
+  const job = queue.find((item) => {
+    return (scheduleJobId && item.id === scheduleJobId)
+      || (reservationId && item.reservationId === reservationId);
+  });
+  if (!job) throw new Error("投稿するX予約が見つかりませんでした。");
+  if (job.status === "done") {
+    sendJson(res, 200, { ok: true, alreadyDone: true, job: publicScheduleJob(job), gitPush: { ok: true, skipped: true, reason: "already_done" } });
+    return;
+  }
+  if (job.status === "posting") throw new Error("このX予約は現在投稿処理中です。少し待ってから確認してください。");
+  if (job.status === "deleted" || job.status === "cancelled") throw new Error("このX予約は削除済みのため投稿できません。");
+
+  job.status = "posting";
+  job.startedAt = new Date().toISOString();
+  job.error = "";
+  writeScheduleQueue(queue);
+
+  try {
+    log("SCHEDULE_POST_NOW_START", { id: job.id, reservationId: job.reservationId || "", character: job.character || "", title: job.title || "" });
+    const { post, mediaId } = await postScheduledJob(job);
+    job.status = "done";
+    job.postedAt = new Date().toISOString();
+    job.post = post;
+    job.mediaId = mediaId;
+    job.error = "";
+    job.errorDetail = null;
+    writeScheduleQueue(queue);
+    const gitPush = await syncScheduleQueueToGitHub("schedule post now");
+    log("SCHEDULE_POST_NOW_DONE", { id: job.id, postId: post.id, url: post.url });
+    sendJson(res, 200, { ok: true, job: publicScheduleJob(job), gitPush });
+  } catch (error) {
+    job.status = "failed";
+    job.failedAt = new Date().toISOString();
+    job.error = friendlyXErrorMessage(error.message || String(error));
+    job.errorDetail = error.body || null;
+    writeScheduleQueue(queue);
+    await syncScheduleQueueToGitHub("schedule post now failed").catch((syncError) => {
+      log("SCHEDULE_POST_NOW_FAILED_SYNC_ERROR", { message: syncError.message || String(syncError) });
+    });
+    rememberError(error, { route: "/post-schedule-now", scheduleId: job.id });
+    sendJson(res, error.status || 500, {
+      ok: false,
+      error: job.error,
+      detail: error.body || null,
+      job: publicScheduleJob(job)
+    });
+  }
+}
+
 async function handleScheduleX(req, res) {
   const raw = await readBody(req);
   const payload = JSON.parse(raw || "{}");
@@ -2618,6 +2673,20 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, error.status || 500, {
         ok: false,
         error: error.message || "X予約投稿の登録でエラーが起きました。",
+        detail: error.body || null
+      });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && requestUrl.pathname === "/post-schedule-now") {
+    try {
+      await handlePostScheduleNow(req, res);
+    } catch (error) {
+      rememberError(error, { route: "/post-schedule-now" });
+      sendJson(res, error.status || 500, {
+        ok: false,
+        error: error.message || "X予約の今すぐ投稿でエラーが起きました。",
         detail: error.body || null
       });
     }
