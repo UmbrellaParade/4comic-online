@@ -1476,6 +1476,10 @@
                 <input id="wpTitlePreview" readonly>
               </label>
             </div>
+            <label class="tall">WordPressカテゴリー（複数可・1行1カテゴリー）
+              <textarea id="wpCategories" rows="4" placeholder="例：&#10;4コマ漫画&#10;AI小説制作&#10;Umbrella Parade制作記録"></textarea>
+            </label>
+            <p class="hint">カテゴリー名だけでOKです。スラッグを指定したい時は「カテゴリー名 | slug」の形で1行ずつ入力できます。</p>
             <div class="check-row">
               <label><input id="wpPostWithX" type="checkbox"> 予約投稿をセットした時にWordPressにも投稿/予約</label>
             </div>
@@ -1485,7 +1489,7 @@
               <button id="postReservationToWp" class="generate-ai-btn" type="button" style="background:#2563eb">選択予約をWordPress投稿/予約</button>
             </div>
             <div id="wpPostStatusText" class="image-status-line"></div>
-            <p class="hint">タイトルは「【連載タイトル】漫画タイトル」、抜粋は「4コマ漫画「連載タイトル」漫画タイトル」、カテゴリーは「4コマ漫画」、スラッグは「4comic-連載回数」になります。</p>
+            <p class="hint">タイトルは「【連載タイトル】漫画タイトル」、抜粋は「4コマ漫画「連載タイトル」漫画タイトル」、カテゴリーは上の複数カテゴリー、スラッグは「4comic-連載回数」になります。</p>
             </div>
           </details>
           <label>予約投稿前（選択中キャラ）
@@ -5453,6 +5457,15 @@ ${text}`;
     const WP_DEFAULT_FEATURED_IMAGE_URL = "https://umbrellaparade13.com/wp-content/uploads/2026/04/4コマ漫画「まだ息してる！」サムネ！.png";
     const WP_CATEGORY_NAME = "4コマ漫画";
     const WP_CATEGORY_SLUG = "4-panel-comic";
+    const WP_DEFAULT_CATEGORIES = [
+      { name: WP_CATEGORY_NAME, slug: WP_CATEGORY_SLUG }
+    ];
+    const WP_CATEGORIES_BY_CHARACTER = {
+      "べるぼ": [
+        { name: "AI小説制作", slug: "" },
+        { name: "Umbrella Parade制作記録", slug: "" }
+      ]
+    };
     const WP_DEFAULT_SERIES_TITLES = {
       "ヴェル13世": "まだ、息してる！",
       "カーラ・マンソン": "カーラの情緒ログ",
@@ -7799,6 +7812,49 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       return title || targetDefault;
     }
 
+    function defaultWordPressCategories(character = val("character")) {
+      const target = wordpressTargetCharacter(character);
+      return (WP_CATEGORIES_BY_CHARACTER[target] || WP_DEFAULT_CATEGORIES).map((category) => ({ ...category }));
+    }
+
+    function normalizeWordPressCategories(categories = null, character = val("character")) {
+      const source = Array.isArray(categories) && categories.length ? categories : defaultWordPressCategories(character);
+      const seen = new Set();
+      return source
+        .map((category) => {
+          if (typeof category === "string") return { name: category, slug: "" };
+          return {
+            name: String(category?.name || "").trim(),
+            slug: String(category?.slug || "").trim()
+          };
+        })
+        .filter((category) => category.name)
+        .filter((category) => {
+          const key = `${category.name}::${category.slug}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+    }
+
+    function wordPressCategoriesToText(categories = null, character = val("character")) {
+      return normalizeWordPressCategories(categories, character)
+        .map((category) => category.slug ? `${category.name} | ${category.slug}` : category.name)
+        .join("\n");
+    }
+
+    function parseWordPressCategoryText(text, character = val("character")) {
+      const lines = String(text || "")
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      if (!lines.length) return defaultWordPressCategories(character);
+      return normalizeWordPressCategories(lines.map((line) => {
+        const parts = line.split("|").map((part) => part.trim());
+        return { name: parts[0] || "", slug: parts[1] || "" };
+      }), character);
+    }
+
     function readWordPressSettingsByCharacter() {
       try {
         const parsed = JSON.parse(localStorage.getItem(WP_SETTINGS_BY_CHARACTER_KEY) || "{}");
@@ -7813,7 +7869,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       localStorage.setItem(WP_SETTINGS_BY_CHARACTER_KEY, JSON.stringify(settings || {}));
     }
 
-    function legacyWordPressSettings() {
+    function legacyWordPressSettings(character = val("character")) {
       return {
         siteUrl: localStorage.getItem(WP_SITE_URL_KEY) || WP_DEFAULT_SITE_URL,
         username: localStorage.getItem(WP_USERNAME_KEY) || "",
@@ -7821,6 +7877,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         postMode: localStorage.getItem(WP_POST_MODE_KEY) || "future",
         featuredImageUrl: localStorage.getItem(WP_FEATURED_IMAGE_URL_KEY) || WP_DEFAULT_FEATURED_IMAGE_URL,
         seriesTitle: "",
+        categories: defaultWordPressCategories(character),
         postWithX: localStorage.getItem(WP_POST_WITH_X_KEY) === "true",
         episodeNumber: "",
         lastEpisodeNumber: localStorage.getItem(WP_LAST_EPISODE_NUMBER_KEY) || ""
@@ -7835,6 +7892,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         postMode: "future",
         featuredImageUrl: WP_DEFAULT_FEATURED_IMAGE_URL,
         seriesTitle: defaultWordPressSeriesTitle(character),
+        categories: defaultWordPressCategories(character),
         postWithX: false,
         episodeNumber: "",
         lastEpisodeNumber: ""
@@ -7871,7 +7929,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       const all = readWordPressSettingsByCharacter();
       if (!all[target]) {
         all[target] = normalizeWordPressSettings({
-          ...legacyWordPressSettings(),
+          ...legacyWordPressSettings(target),
           seriesTitle: defaultWordPressSeriesTitle(target)
         }, target);
         writeWordPressSettingsByCharacter(all);
@@ -7887,6 +7945,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         postMode: settings.postMode || "future",
         featuredImageUrl: settings.featuredImageUrl || WP_DEFAULT_FEATURED_IMAGE_URL,
         seriesTitle: normalizedWordPressSeriesTitle(settings.seriesTitle, character),
+        categories: normalizeWordPressCategories(settings.categories, character),
         postWithX: !!settings.postWithX,
         episodeNumber: String(settings.episodeNumber || "").replace(/[^0-9]/g, ""),
         lastEpisodeNumber: String(settings.lastEpisodeNumber || "").replace(/[^0-9]/g, "")
@@ -7901,6 +7960,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         postMode: val("wpPostMode") || "future",
         featuredImageUrl: val("wpFeaturedImageUrl") || WP_DEFAULT_FEATURED_IMAGE_URL,
         seriesTitle: val("wpSeriesTitle") || defaultWordPressSeriesTitle(character),
+        categories: parseWordPressCategoryText(val("wpCategories"), character),
         postWithX: $("wpPostWithX") && $("wpPostWithX").checked,
         episodeNumber: val("wpEpisodeNumber"),
         lastEpisodeNumber: ""
@@ -7952,6 +8012,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       if ($("wpPostMode")) $("wpPostMode").value = settings.postMode;
       if ($("wpFeaturedImageUrl")) $("wpFeaturedImageUrl").value = settings.featuredImageUrl;
       if ($("wpSeriesTitle")) $("wpSeriesTitle").value = settings.seriesTitle || defaultWordPressSeriesTitle(character);
+      if ($("wpCategories")) $("wpCategories").value = wordPressCategoriesToText(settings.categories, character);
       updateWordPressTitlePreview(character, settings);
       if ($("wpPostWithX")) $("wpPostWithX").checked = !!settings.postWithX;
       if ($("wpEpisodeNumber")) {
@@ -8056,6 +8117,11 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       return `4comic-${wordpressEpisodeNumber(item, settings)}`;
     }
 
+    function wordpressCategories(character = val("character"), settings = null) {
+      const wpSettings = settings || wordpressSettingsForUse(character);
+      return normalizeWordPressCategories(wpSettings.categories, character);
+    }
+
     function reservationScheduledLocal(item) {
       const date = (item && item.date) || val("scheduled") || today();
       const time = (item && item.time) || val("scheduledTime") || savedScheduledTimeForCharacter(item && item.character) || localStorage.getItem(LAST_TIME_KEY) || "20:00";
@@ -8140,6 +8206,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       const postMode = wordpressPostStatus(targetCharacter, wpSettings);
       const postScheduledAt = postMode === "future" ? (scheduledAt || reservationScheduledAt(item)) : "";
       const postScheduledLocal = postMode === "future" ? reservationScheduledLocal(item) : "";
+      const categoryList = wordpressCategories(targetCharacter, wpSettings);
       const payload = {
         ...wordpressSettingsPayload(targetCharacter, wpSettings),
         reservationId: item.id,
@@ -8150,8 +8217,9 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         status: postMode,
         scheduledAt: postScheduledAt,
         scheduledLocal: postScheduledLocal,
-        categoryName: WP_CATEGORY_NAME,
-        categorySlug: WP_CATEGORY_SLUG,
+        categories: categoryList,
+        categoryName: categoryList[0]?.name || WP_CATEGORY_NAME,
+        categorySlug: categoryList[0]?.slug || WP_CATEGORY_SLUG,
         featuredImageUrl: wpSettings.featuredImageUrl || WP_DEFAULT_FEATURED_IMAGE_URL,
         ogImageUrl: wpSettings.featuredImageUrl || WP_DEFAULT_FEATURED_IMAGE_URL,
         imageDataUrl: selectedImage.dataUrl,
@@ -10894,7 +10962,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       autosaveWordPressSettings(previous);
       loadWordPressSettings($("wpSettingsCharacter").value || val("character"));
     });
-    ["wpSiteUrl", "wpUsername", "wpApplicationPassword", "wpPostMode", "wpFeaturedImageUrl", "wpSeriesTitle", "wpEpisodeNumber"].forEach((id) => {
+    ["wpSiteUrl", "wpUsername", "wpApplicationPassword", "wpPostMode", "wpFeaturedImageUrl", "wpSeriesTitle", "wpCategories", "wpEpisodeNumber"].forEach((id) => {
       const input = $(id);
       if (!input) return;
       input.addEventListener("input", () => autosaveWordPressSettings(activeWordPressSettingsCharacter || selectedWordPressSettingsCharacter()));

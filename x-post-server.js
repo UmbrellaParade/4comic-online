@@ -2214,17 +2214,72 @@ async function ensureMediaFromUrl(siteUrl, username, appPassword, imageUrl, altT
   return await uploadMediaToWordPress(siteUrl, username, appPassword, buffer, mimeType, filename, altText);
 }
 
-async function ensureWordPressCategory(siteUrl, username, appPassword, name, slug) {
-  const found = await wordpressJson(siteUrl, username, appPassword, "/categories", {
-    params: { slug, per_page: 100 }
+function normalizeWordPressCategoryPayload(category) {
+  if (typeof category === "string") {
+    const parts = category.split("|").map((part) => part.trim());
+    return { name: parts[0] || "", slug: parts[1] || "" };
+  }
+  return {
+    name: String(category?.name || "").trim(),
+    slug: String(category?.slug || "").trim()
+  };
+}
+
+function wordpressCategoriesFromPayload(payload = {}) {
+  const source = Array.isArray(payload.categories) && payload.categories.length
+    ? payload.categories
+    : [{ name: payload.categoryName || "4コマ漫画", slug: payload.categorySlug || "4-panel-comic" }];
+  const seen = new Set();
+  return source
+    .map(normalizeWordPressCategoryPayload)
+    .filter((category) => category.name)
+    .filter((category) => {
+      const key = `${category.name}::${category.slug}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+async function ensureWordPressCategory(siteUrl, username, appPassword, name, slug = "") {
+  const safeName = String(name || "").trim();
+  const safeSlug = String(slug || "").trim();
+  if (!safeName) throw new Error("WordPress category name is empty.");
+  if (safeSlug) {
+    const foundBySlug = await wordpressJson(siteUrl, username, appPassword, "/categories", {
+      params: { slug: safeSlug, per_page: 100 }
+    });
+    if (Array.isArray(foundBySlug) && foundBySlug[0] && foundBySlug[0].id) return foundBySlug[0].id;
+  }
+  const foundByName = await wordpressJson(siteUrl, username, appPassword, "/categories", {
+    params: { search: safeName, per_page: 100 }
   });
-  if (Array.isArray(found) && found[0] && found[0].id) return found[0].id;
+  const exact = Array.isArray(foundByName)
+    ? foundByName.find((item) => String(item.name || "").trim().toLowerCase() === safeName.toLowerCase())
+    : null;
+  if (exact && exact.id) return exact.id;
+  const body = { name: safeName };
+  if (safeSlug) body.slug = safeSlug;
   const created = await wordpressJson(siteUrl, username, appPassword, "/categories", {
     method: "POST",
-    body: { name, slug }
+    body
   });
   if (!created.id) throw new Error("WordPressカテゴリーIDを取得できませんでした。");
   return created.id;
+}
+
+async function ensureWordPressCategories(siteUrl, username, appPassword, categories, preferredCategories = null) {
+  const source = Array.isArray(preferredCategories) && preferredCategories.length ? preferredCategories : categories;
+  const list = Array.isArray(source) && source.length
+    ? source
+    : [{ name: "4コマ漫画", slug: "4-panel-comic" }];
+  const ids = [];
+  for (const category of list) {
+    const id = await ensureWordPressCategory(siteUrl, username, appPassword, category.name, category.slug);
+    if (id && !ids.includes(id)) ids.push(id);
+  }
+  if (!ids.length) throw new Error("WordPress category IDs could not be resolved.");
+  return ids;
 }
 
 function wordpressImageBlock(media, altText) {
@@ -2494,12 +2549,12 @@ async function handlePostWordPress(req, res) {
     if (scheduled <= Date.now() + 30000) throw new Error("WordPress予約投稿は30秒以上先の日時を指定してください。");
   }
 
-  const categoryId = await ensureWordPressCategory(
+  const categoryIds = await ensureWordPressCategories(
     siteUrl,
     username,
     appPassword,
     payload.categoryName || "4コマ漫画",
-    payload.categorySlug || "4-panel-comic"
+    wordpressCategoriesFromPayload(payload)
   );
 
   const mediaData = dataUrlToMediaBuffer(payload.imageDataUrl);
@@ -2521,7 +2576,7 @@ async function handlePostWordPress(req, res) {
     excerpt,
     slug,
     status,
-    categories: [categoryId],
+    categories: categoryIds,
     featured_media: featuredMedia.id
   };
   if (status === "future") {
