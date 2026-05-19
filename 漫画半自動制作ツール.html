@@ -7698,6 +7698,23 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       return `${text.slice(0, 276).trim()}...`;
     }
 
+    function removeHashtagsFromText(text) {
+      return String(text || "")
+        .split(/\r?\n/)
+        .map((line) => line.replace(/(^|\s)#[^\s#]+/g, "").replace(/[ \t]+/g, " ").trim())
+        .filter(Boolean)
+        .join("\n");
+    }
+
+    function wordpressBodyText(item) {
+      if (!item) return "";
+      const body = [
+        item.manualPostText || "",
+        item.includeAutoPostText ? (item.autoPostText || "") : ""
+      ].map((text) => String(text || "").trim()).filter(Boolean).join("\n\n");
+      return removeHashtagsFromText(body);
+    }
+
     async function imageForReservation(item) {
       if (!item || !item.imageId) return null;
       return await getGeneratedImage(item.imageId).catch(() => null);
@@ -8272,6 +8289,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         categorySlug: categoryList[0]?.slug || WP_CATEGORY_SLUG,
         featuredImageUrl: wpSettings.featuredImageUrl || WP_DEFAULT_FEATURED_IMAGE_URL,
         ogImageUrl: wpSettings.featuredImageUrl || WP_DEFAULT_FEATURED_IMAGE_URL,
+        bodyText: wordpressBodyText(item),
         imageDataUrl: selectedImage.dataUrl,
         filename: configuredImageDownloadFilename(selectedImage, item, selectedImage.filename || item.imageFilename || `manga-${episode}.png`),
         altText: item.title || "4コマ漫画",

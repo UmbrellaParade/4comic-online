@@ -2292,6 +2292,26 @@ function wordpressImageBlock(media, altText) {
 <!-- /wp:image -->`;
 }
 
+function wordpressParagraphBlocks(text = "") {
+  const normalized = String(text || "").trim();
+  if (!normalized) return "";
+  return normalized
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) => {
+      const html = escapeHtml(block).replace(/\r?\n/g, "<br>");
+      return `<!-- wp:paragraph -->\n<p>${html}</p>\n<!-- /wp:paragraph -->`;
+    })
+    .join("\n\n");
+}
+
+function wordpressPostContent(media, altText = "", bodyText = "") {
+  return [wordpressImageBlock(media, altText), wordpressParagraphBlocks(bodyText)]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 function wordpressMetaPayload(featuredMediaId, ogImageUrl, swell = {}, excerpt = "") {
   const description = String(swell.description || excerpt || "").trim();
   const payload = {
@@ -2609,6 +2629,7 @@ async function handlePostWordPress(req, res) {
   const title = String(payload.title || "").trim();
   const slug = String(payload.slug || "").trim();
   const excerpt = String(payload.excerpt || "").trim();
+  const bodyText = String(payload.bodyText || payload.postText || "").trim();
   const featuredImageUrl = String(payload.featuredImageUrl || payload.ogImageUrl || "").trim();
   const warnings = [];
 
@@ -2645,7 +2666,7 @@ async function handlePostWordPress(req, res) {
   const featuredMedia = await ensureMediaFromUrl(siteUrl, username, appPassword, featuredImageUrl, payload.altText || title);
   const postBody = {
     title,
-    content: wordpressImageBlock(mangaMedia, payload.altText || title),
+    content: wordpressPostContent(mangaMedia, payload.altText || title, bodyText),
     excerpt,
     slug,
     status,
