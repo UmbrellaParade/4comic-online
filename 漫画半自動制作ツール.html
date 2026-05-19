@@ -2379,8 +2379,9 @@
             "final": "今日も少しだけ作る。",
             "defaultTheme": "創作継続",
             "defaultAim": "AIと音楽制作を続ける人に、短く再開するきっかけを渡す。",
-            "profileSummary": "べるぼは中の人であり、ヴェル13世の人間界の仮の姿。Noise In My Soulのボーカル。AI作曲、Suno、音楽制作、創作継続の発信に使う。",
-            "mangaTemplate": "現実寄りの制作ログ。AI、音楽、バンド、創作の迷いを、Umbrella Paradeの途中感と接続する。",
+            "profileSummary": "べるぼは中の人であり、ヴェル13世の人間界の仮の姿。Noise In My Soulのボーカル。AI作曲、Suno、音楽制作、創作継続の発信に使う。情報発信・教育寄りだが、上から教えず、読者と同じ目線で一緒に進む。",
+            "speechStyle": "べるぼの口調は、やさしい敬語を基本にする。一人称は「僕」。強く言い切らず、読者を責めず、煽らず、急かさない。「〜してみてもいいかもしれません」「一緒にやっていきましょう」「大丈夫です」「まずは少しだけでいいと思います」のように、柔らかく背中を押す。命令口調、「やるべき」「甘えるな」のようなきつい言い方は禁止。",
+            "mangaTemplate": "現実寄りの制作ログ。AI、音楽、バンド、創作の迷いを、Umbrella Paradeの途中感と接続する。情報発信系の漫画でも、説教・煽り・断定で追い込む言い方はしない。優しい敬語で、読者が「少しだけやってみよう」と思える着地にする。",
             "fixed": [
                   "Character: Belbo, the human-world temporary form behind Vel 13th.",
                   "Vocalist of Noise In My Soul.",
@@ -3990,7 +3991,8 @@
     function updateProfilePanel() {
       const character = val("character") || "ヴェル13世";
       const info = characterData[character] || characterData["ヴェル13世"];
-      $("profileText").value = `${info.profileSummary || ""}\n\n漫画テンプレ:\n${info.mangaTemplate || ""}`;
+      const speechStyleText = info.speechStyle ? `\n\n口調・言葉づかい:\n${info.speechStyle}` : "";
+      $("profileText").value = `${info.profileSummary || ""}${speechStyleText}\n\n漫画テンプレ:\n${info.mangaTemplate || ""}`;
 
       // キャラ参考画像（全画像）
       const allImages = getCharacterImages(character);
@@ -4924,6 +4926,10 @@ ${d.imagePatternName || "-"}
 
 ${d.info.profileSummary || "-"}
 
+## 口調・言葉づかい
+
+${d.info.speechStyle || "-"}
+
 ## 漫画テンプレ
 
 ${d.info.mangaTemplate || "-"}
@@ -5024,7 +5030,7 @@ ${d.notes || "-"}
     function speakerHintsForCharacter(name) {
       if (name === "ヴェル13世") return ["ヴェル13世", "ヴェル", "Vel 13th", "Vel", "俺", "オレ"];
       if (name === "カーラ・マンソン") return ["カーラ・マンソン", "カーラ", "Carla Manson", "Carla", "私", "わたし", "あたし"];
-      if (name === "べるぼ") return ["べるぼ", "ベルボ", "Belbo", "僕", "ぼく", "俺", "オレ"];
+      if (name === "べるぼ") return ["べるぼ", "ベルボ", "Belbo", "僕", "ぼく"];
       if (name === "アマモリ") return ["アマモリ", "雨守", "Amamori", "ぼく", "僕"];
       if (name === "アマヨミ") return ["アマヨミ", "雨詠", "Amayomi", "私", "わたし"];
       return [name].filter(Boolean);
@@ -5234,6 +5240,9 @@ ${carlaColorBlock}`;
 
 Main character preset from Obsidian:
 ${d.info.profileSummary || ""}
+
+Speech style and wording:
+${d.info.speechStyle || ""}
 
 Manga template:
 ${d.info.mangaTemplate || ""}
@@ -11220,7 +11229,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       const subCharacterPromptBlock = selectedSubCharacters.length
         ? `\n## 登場キャラクター\n${selectedSubCharacters.map((name) => {
             const subInfo = characterData[name] || {};
-            return `### ${name}\n${subInfo.profileSummary || ""}`;
+            return `### ${name}\n${subInfo.profileSummary || ""}${subInfo.speechStyle ? `\n口調: ${subInfo.speechStyle}` : ""}`;
           }).join("\n\n")}\n`
         : "";
       const carlaStageRules = character === "カーラ・マンソン"
@@ -11241,7 +11250,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
 `
         : "";
       const manualIdeaBlock = manualIdeaSeed
-        ? `\n## ネタにしたい内容・想い（ユーザー指定）\n${manualIdeaSeed}\n\n## 指定内容から作る時のルール\n- 上の指定文の意図・感情・伝えたい相手を読み取る。\n- 指定文をそのまま長く引用しない。漫画用の短いタイトル、サブコピー、テーマ、狙い、4コマ台本へ変換する。\n- 選択中キャラクターの言葉づかい、価値観、漫画テンプレートに合わせる。\n- べるぼが選択されている場合は、本人の思想・制作ログ・教育発信の種を、読者に寄り添う創作ログとして整理する。\n- ヴェル13世が選択されている場合は、何者にもなれなかった人がそれでも一歩進む葛藤に寄せる。\n- カーラ・マンソンが選択されている場合は、本音と執着、自分を取り戻す物語に寄せる。\n`
+        ? `\n## ネタにしたい内容・想い（ユーザー指定）\n${manualIdeaSeed}\n\n## 指定内容から作る時のルール\n- 上の指定文の意図・感情・伝えたい相手を読み取る。\n- 指定文をそのまま長く引用しない。漫画用の短いタイトル、サブコピー、テーマ、狙い、4コマ台本へ変換する。\n- 選択中キャラクターの言葉づかい、価値観、漫画テンプレートに合わせる。\n- べるぼが選択されている場合は、本人の思想・制作ログ・教育発信の種を、やさしい敬語で、読者を追い込まず、上から教えない創作ログとして整理する。\n- ヴェル13世が選択されている場合は、何者にもなれなかった人がそれでも一歩進む葛藤に寄せる。\n- カーラ・マンソンが選択されている場合は、本音と執着、自分を取り戻す物語に寄せる。\n`
         : "";
       const optionalOutput = [
         wantAutoPostText ? '  "autoPostText": "このネタに合う短い投稿文。ハッシュタグは入れない",': "",
@@ -11253,6 +11262,9 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
 ## キャラクター: ${character}
 ${info.profileSummary}
 ${subCharacterPromptBlock}
+
+## 口調・言葉づかい
+${info.speechStyle || "選択中キャラクターの既存設定に合わせる。"}
 
 ## 漫画テンプレート
 ${info.mangaTemplate}
