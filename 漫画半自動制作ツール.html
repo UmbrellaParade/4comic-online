@@ -1000,6 +1000,18 @@
           </div>
         </details>
 
+        <div class="workflow-box manual-idea-box">
+          <div class="workflow-head">
+            <div class="workflow-title">ネタにしたい内容・想い</div>
+          </div>
+          <label class="tall">指定内容
+            <textarea id="manualIdeaSeed" rows="5" placeholder="例：この投稿で伝えたいこと、キャラに言わせたい葛藤、漫画にしたい出来事などを書く"></textarea>
+          </label>
+          <div class="actions">
+            <button id="manualGenerateIdea" class="generate-ai-btn" type="button">✍ 指定内容からネタ生成</button>
+          </div>
+        </div>
+
         <div class="actions">
           <button id="autoGenerate" class="generate-ai-btn" type="button">✨ ネタ自動生成</button>
           <button id="reGenerate" class="secondary" type="button">↺ 再生成</button>
@@ -1519,6 +1531,7 @@
     const fields = [
       "character", "status", "title", "subtitle", "theme", "scheduled", "scheduledTime", "aim",
       "p1", "p2", "p3", "p4", "platform", "manualPostText", "autoPostText", "fixedHashtags", "ideaHashtags", "aiModel", "customModel", "calendarMonth",
+      "manualIdeaSeed",
       "pastIdeaTitle", "pastIdeaText",
       "imageModel", "customImageModel", "imageSize", "imageQuality", "imageFormat",
       "imageDownloadBaseName",
@@ -4771,6 +4784,7 @@
         p4: val("p4"),
         platform: val("platform"),
         scheduledTime: val("scheduledTime"),
+        manualIdeaSeed: val("manualIdeaSeed"),
         manualPostText: val("manualPostText"),
         autoPostText: val("autoPostText"),
         fixedHashtags: val("fixedHashtags"),
@@ -5384,14 +5398,14 @@ ${text}`;
     const VAULT_NAME = "Obsidian Folder";
     const ACTIVE_IDEA_FIELD_IDS = [
       "character", "imagePatternName", "title", "subtitle", "theme", "aim",
-      "p1", "p2", "p3", "p4", "manualPostText", "autoPostText", "ideaHashtags"
+      "p1", "p2", "p3", "p4", "manualPostText", "autoPostText", "ideaHashtags", "manualIdeaSeed"
     ];
     const ACTIVE_IDEA_CHECK_IDS = [
       "question", "logo", "chatGptReferenceInstruction",
       "createAutoPostText", "includeAutoPostText", "createIdeaHashtags", "includeIdeaHashtags"
     ];
     const ACTIVE_IDEA_CONTENT_IDS = [
-      "title", "subtitle", "p1", "p2", "p3", "p4", "manualPostText", "autoPostText", "ideaHashtags"
+      "title", "subtitle", "p1", "p2", "p3", "p4", "manualPostText", "autoPostText", "ideaHashtags", "manualIdeaSeed"
     ];
     let activeScheduleCharacter = "";
     let activeXOAuthSettingsCharacter = "";
@@ -5990,6 +6004,7 @@ ${text}`;
         aim: d.aim,
         manualPostText: d.manualPostText,
         autoPostText: d.autoPostText,
+        manualIdeaSeed: d.manualIdeaSeed,
         fixedHashtags: d.fixedHashtags,
         ideaHashtags: d.ideaHashtags,
         createAutoPostText: d.createAutoPostText,
@@ -6027,6 +6042,7 @@ ${text}`;
       $("subtitle").value = item.subtitle || "";
       $("theme").value = item.theme || "";
       $("aim").value = item.aim || "";
+      if ($("manualIdeaSeed")) $("manualIdeaSeed").value = item.manualIdeaSeed || "";
       $("manualPostText").value = item.manualPostText || "";
       $("autoPostText").value = item.autoPostText || "";
       $("fixedHashtags").value = item.fixedHashtags || item.manualHashtags || (characterData[item.character || "ヴェル13世"] || characterData["ヴェル13世"]).tags || "";
@@ -6068,6 +6084,10 @@ ${item.subtitle || "-"}
 ## 狙い
 
 ${item.aim || "-"}
+
+## ネタにしたい内容・想い
+
+${item.manualIdeaSeed || "-"}
 
 ## 4コマ台本
 
@@ -6405,7 +6425,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
 
     function ideaComparableText(item) {
       return [
-        item.character, item.title, item.subtitle, item.theme, item.aim, item.pastText,
+        item.character, item.title, item.subtitle, item.theme, item.aim, item.manualIdeaSeed, item.pastText,
         item.p1, item.p2, item.p3, item.p4
       ].filter(Boolean).join(" ");
     }
@@ -10680,6 +10700,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       $("manualPostText").value = "";
       $("autoPostText").value = "";
       $("ideaHashtags").value = "";
+      $("manualIdeaSeed").value = "";
       $("imageDownloadBaseName").value = "漫画";
       saveImageDownloadNameConfig("ヴェル13世");
       $("imageDownloadFolder").value = "";
@@ -10919,10 +10940,11 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     });
 
     // ── AI generate ─────────────────────────────────────────────
-    function buildGeneratePrompt() {
+    function buildGeneratePrompt(options = {}) {
       const character = val("character") || "ヴェル13世";
       const info = characterData[character] || characterData["ヴェル13世"];
       const duplicateBlock = duplicateAvoidanceBlock(character);
+      const manualIdeaSeed = String(options.manualIdeaSeed || "").trim();
       const wantAutoPostText = $("createAutoPostText") && $("createAutoPostText").checked;
       const wantIdeaHashtags = !$("createIdeaHashtags") || $("createIdeaHashtags").checked;
       const selectedSubCharacters = Array.from(document.querySelectorAll(".subchar-check:checked")).map((el) => el.value);
@@ -10949,6 +10971,9 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
 - キャラ名は画像生成時の吹き出し配置用の話者ラベル。漫画内には基本的に表示しない前提で書く。
 `
         : "";
+      const manualIdeaBlock = manualIdeaSeed
+        ? `\n## ネタにしたい内容・想い（ユーザー指定）\n${manualIdeaSeed}\n\n## 指定内容から作る時のルール\n- 上の指定文の意図・感情・伝えたい相手を読み取る。\n- 指定文をそのまま長く引用しない。漫画用の短いタイトル、サブコピー、テーマ、狙い、4コマ台本へ変換する。\n- 選択中キャラクターの言葉づかい、価値観、漫画テンプレートに合わせる。\n- べるぼが選択されている場合は、本人の思想・制作ログ・教育発信の種を、読者に寄り添う創作ログとして整理する。\n- ヴェル13世が選択されている場合は、何者にもなれなかった人がそれでも一歩進む葛藤に寄せる。\n- カーラ・マンソンが選択されている場合は、本音と執着、自分を取り戻す物語に寄せる。\n`
+        : "";
       const optionalOutput = [
         wantAutoPostText ? '  "autoPostText": "このネタに合う短い投稿文。ハッシュタグは入れない",': "",
         wantIdeaHashtags ? '  "ideaHashtags": "#このネタ用 #追加タグ #3〜5個",' : ""
@@ -10972,6 +10997,7 @@ ${info.mangaTemplate}
 ${carlaStageRules}
 ${dialogueRules}
 ${duplicateBlock}
+${manualIdeaBlock}
 ## 出力形式（必ずこのJSONのみ返してください）
 {
   "title": "〇〇な日（例：止まってる日）",
@@ -11071,7 +11097,14 @@ ${optionalOutput ? optionalOutput + "\n" : ""}  "p1": "1コマ目のセリフや
       return [d.title, d.subtitle].filter(Boolean).join("\n").trim();
     }
 
-    async function autoGenerate() {
+    async function autoGenerate(options = {}) {
+      const manualMode = options.manualMode === true;
+      const manualIdeaSeed = $("manualIdeaSeed") ? val("manualIdeaSeed").trim() : "";
+      if (manualMode && !manualIdeaSeed) {
+        alert("ネタにしたい内容・想いを入力してください。");
+        return;
+      }
+
       const provider = $("aiProvider").value;
       const apiKey = localStorage.getItem(`apiKey_${provider}`) || $("apiKey").value.trim();
       if (!apiKey) {
@@ -11079,15 +11112,21 @@ ${optionalOutput ? optionalOutput + "\n" : ""}  "p1": "1コマ目のセリフや
         return;
       }
 
-      const btn = $("autoGenerate");
+      const btn = manualMode ? $("manualGenerateIdea") : $("autoGenerate");
+      const autoBtn = $("autoGenerate");
+      const manualBtn = $("manualGenerateIdea");
       const reBtn = $("reGenerate");
       btn.disabled = true;
+      if (autoBtn) autoBtn.disabled = true;
+      if (manualBtn) manualBtn.disabled = true;
       reBtn.disabled = true;
       btn.innerHTML = '<span class="spinner"></span>生成中…';
-      $("statusText").textContent = "AIがネタを考えています…";
+      $("statusText").textContent = manualMode
+        ? "AIが指定内容を漫画ネタに変換しています…"
+        : "AIがネタを考えています…";
 
       try {
-        const prompt = buildGeneratePrompt();
+        const prompt = buildGeneratePrompt({ manualIdeaSeed: manualMode ? manualIdeaSeed : "" });
         let raw;
         if (provider === "openai") {
           raw = await callOpenAI(apiKey, prompt);
@@ -11127,21 +11166,25 @@ ${optionalOutput ? optionalOutput + "\n" : ""}  "p1": "1コマ目のセリフや
           }
           openObsidianNew(ideaScriptFilePath(target), ideaMarkdown(target));
         }
+        const doneLabel = manualMode ? "指定内容からネタを生成しました！" : "ネタを生成しました！";
         $("statusText").textContent = stockItem
-          ? "✨ ネタを生成しました！未作成ネタに保存して選択しました。"
-          : "✨ ネタを生成しました！";
+          ? `✨ ${doneLabel}未作成ネタに保存して選択しました。`
+          : `✨ ${doneLabel}`;
         setTimeout(() => $("statusText").textContent = "", 3000);
       } catch (e) {
         $("statusText").textContent = `エラー: ${e.message}`;
         console.error(e);
       } finally {
-        btn.disabled = false;
+        if (autoBtn) autoBtn.disabled = false;
+        if (manualBtn) manualBtn.disabled = false;
         reBtn.disabled = false;
-        btn.innerHTML = "✨ ネタ自動生成";
+        if (autoBtn) autoBtn.innerHTML = "✨ ネタ自動生成";
+        if (manualBtn) manualBtn.innerHTML = "✍ 指定内容からネタ生成";
       }
     }
 
     $("autoGenerate").addEventListener("click", autoGenerate);
+    $("manualGenerateIdea").addEventListener("click", () => autoGenerate({ manualMode: true }));
     $("reGenerate").addEventListener("click", autoGenerate);
 
     async function initializeTool() {
