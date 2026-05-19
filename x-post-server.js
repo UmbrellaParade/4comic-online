@@ -57,6 +57,27 @@ const SEED_RUNTIME_IMAGES_PATH = path.join(__dirname, "seed-runtime-images.json"
 const SEED_RUNTIME_IMAGES_DIR = path.join(__dirname, "seed-runtime-images");
 const GITHUB_WORKFLOWS_DIR = path.join(__dirname, ".github", "workflows");
 const GIT_DIR = path.join(__dirname, ".git");
+const GITHUB_API_BASE = String(process.env.PERSISTENCE_GITHUB_API_BASE || "https://api.github.com").replace(/\/+$/, "");
+const PERSISTENCE_GITHUB_TOKEN = String(
+  process.env.PERSISTENCE_GITHUB_TOKEN
+  || process.env.GH_TOKEN
+  || process.env.GITHUB_TOKEN
+  || ""
+).trim();
+const PERSISTENCE_GITHUB_REPOSITORY = String(
+  process.env.PERSISTENCE_GITHUB_REPOSITORY
+  || process.env.GITHUB_REPOSITORY
+  || "UmbrellaParade/4comic-online"
+).trim();
+const PERSISTENCE_GITHUB_BRANCH = String(process.env.PERSISTENCE_GITHUB_BRANCH || process.env.GITHUB_BRANCH || "main").trim();
+const PERSISTENCE_SCHEDULE_PATH = String(process.env.PERSISTENCE_SCHEDULE_PATH || ".persistent/x-scheduled-posts.enc.json")
+  .replace(/^\/+/, "")
+  .replace(/\\/g, "/");
+const PERSISTENCE_ENCRYPTION_KEY = String(
+  process.env.PERSISTENCE_ENCRYPTION_KEY
+  || process.env.SCHEDULE_ENCRYPTION_KEY
+  || ""
+).trim();
 const VAULT_ROOT = process.env.VAULT_ROOT || path.resolve(__dirname, "..", "..", "..", "..");
 const DEFAULT_SCOPES = "tweet.read tweet.write users.read media.write offline.access";
 const FILE_RETRY_ATTEMPTS = Number(process.env.FILE_RETRY_ATTEMPTS || 10);
@@ -187,6 +208,52 @@ function gitPath() {
   return process.platform === "win32" ? "git" : "/usr/bin/git";
 }
 
+function pathEqualsOrInside(parent, child) {
+  const parentPath = path.resolve(parent);
+  const childPath = path.resolve(child);
+  const relative = path.relative(parentPath, childPath);
+  return relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function isPersistentDataDir() {
+  if (!ONLINE_MODE) return true;
+  const dataDir = path.resolve(DATA_DIR);
+  const railwayVolume = String(process.env.RAILWAY_VOLUME_MOUNT_PATH || "").trim();
+  if (railwayVolume && pathEqualsOrInside(railwayVolume, dataDir)) return true;
+  if (process.platform !== "win32" && dataDir === "/data") return true;
+  return false;
+}
+
+function isRemoteSchedulePersistenceConfigured() {
+  return !!(PERSISTENCE_GITHUB_TOKEN && PERSISTENCE_GITHUB_REPOSITORY && PERSISTENCE_GITHUB_BRANCH && PERSISTENCE_ENCRYPTION_KEY);
+}
+
+function schedulePersistenceStatus() {
+  const hasToken = !!PERSISTENCE_GITHUB_TOKEN;
+  const hasEncryptionKey = !!PERSISTENCE_ENCRYPTION_KEY;
+  const dataDirPersistent = isPersistentDataDir();
+  const remoteScheduleConfigured = isRemoteSchedulePersistenceConfigured();
+  return {
+    dataDir: DATA_DIR,
+    dataDirPersistent,
+    remoteSchedule: {
+      configured: remoteScheduleConfigured,
+      repository: PERSISTENCE_GITHUB_REPOSITORY || "",
+      branch: PERSISTENCE_GITHUB_BRANCH || "",
+      path: PERSISTENCE_SCHEDULE_PATH,
+      encrypted: remoteScheduleConfigured,
+      missing: {
+        token: !hasToken,
+        encryptionKey: !hasEncryptionKey
+      }
+    },
+    durable: dataDirPersistent || remoteScheduleConfigured,
+    warning: dataDirPersistent || remoteScheduleConfigured
+      ? ""
+      : "Railwayの永続Volumeか、暗号化GitHub永続化が未設定です。再デプロイ時に予約キューが消える可能性があります。"
+  };
+}
+
 function execFileAsync(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     execFile(command, args, options, (error, stdout, stderr) => {
@@ -199,6 +266,220 @@ function execFileAsync(command, args, options = {}) {
       resolve({ stdout, stderr });
     });
   });
+}
+
+function githubContentApiPath(remotePath) {
+  return String(remotePath || "")
+    .split("/")
+    .filter(Boolean)
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+}
+
+function githubRepositoryApiPath() {
+  return String(PERSISTENCE_GITHUB_REPOSITORY || "")
+    .split("/")
+    .filter(Boolean)
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+}
+
+async function githubApiJson(method, apiPath, body = null) {
+  const url = /^https?:\/\//i.test(String(apiPath || ""))
+    ? String(apiPath)
+    : `${GITHUB_API_BASE}${apiPath}`;
+  const response = await fetch(url, {
+    method,
+    headers: {
+      "Accept": "application/vnd.github+json",
+      "Authorization": `Bearer ${PERSISTENCE_GITHUB_TOKEN}`,
+      "X-GitHub-Api-Version": "2022-11-28",
+      ...(body ? { "Content-Type": "application/json" } : {})
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const text = await response.text();
+  let json = {};
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    json = { raw: text };
+  }
+  if (!response.ok) {
+    const message = json.message || json.detail || json.raw || `GitHub API error: ${response.status}`;
+    const error = new Error(message);
+    error.status = response.status;
+    error.body = json;
+    throw error;
+  }
+  return json;
+}
+
+function encryptionKeyBuffer() {
+  if (!PERSISTENCE_ENCRYPTION_KEY) throw new Error("PERSISTENCE_ENCRYPTION_KEY is required for encrypted persistence.");
+  return crypto.createHash("sha256").update(PERSISTENCE_ENCRYPTION_KEY, "utf8").digest();
+}
+
+function encryptPersistentJson(payload, label) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", encryptionKeyBuffer(), iv);
+  const encrypted = Buffer.concat([
+    cipher.update(JSON.stringify(payload), "utf8"),
+    cipher.final()
+  ]);
+  const tag = cipher.getAuthTag();
+  return JSON.stringify({
+    version: 1,
+    encrypted: true,
+    algorithm: "aes-256-gcm",
+    label,
+    updatedAt: new Date().toISOString(),
+    payload: {
+      iv: iv.toString("base64"),
+      tag: tag.toString("base64"),
+      data: encrypted.toString("base64")
+    }
+  }, null, 2);
+}
+
+function decryptPersistentJson(rawText) {
+  const parsed = JSON.parse(String(rawText || "null"));
+  if (!parsed || typeof parsed !== "object" || parsed.encrypted !== true) return parsed;
+  const payload = parsed.payload || {};
+  const decipher = crypto.createDecipheriv(
+    "aes-256-gcm",
+    encryptionKeyBuffer(),
+    Buffer.from(String(payload.iv || ""), "base64")
+  );
+  decipher.setAuthTag(Buffer.from(String(payload.tag || ""), "base64"));
+  const decrypted = Buffer.concat([
+    decipher.update(Buffer.from(String(payload.data || ""), "base64")),
+    decipher.final()
+  ]);
+  return JSON.parse(decrypted.toString("utf8"));
+}
+
+async function readGitHubTextFile(remotePath) {
+  const repo = githubRepositoryApiPath();
+  const filePath = githubContentApiPath(remotePath);
+  try {
+    const json = await githubApiJson(
+      "GET",
+      `/repos/${repo}/contents/${filePath}?ref=${encodeURIComponent(PERSISTENCE_GITHUB_BRANCH)}`
+    );
+    if (!json || json.type !== "file") return { exists: false, text: "", sha: "" };
+    let content = String(json.content || "").replace(/\s+/g, "");
+    if (!content && json.git_url) {
+      const blob = await githubApiJson("GET", json.git_url);
+      content = String(blob.content || "").replace(/\s+/g, "");
+    }
+    if (!content) return { exists: true, text: "", sha: json.sha || "" };
+    return {
+      exists: true,
+      text: Buffer.from(content, "base64").toString("utf8"),
+      sha: json.sha || ""
+    };
+  } catch (error) {
+    if (Number(error.status) === 404) return { exists: false, text: "", sha: "" };
+    throw error;
+  }
+}
+
+async function writeGitHubTextFile(remotePath, text, message) {
+  const repo = githubRepositoryApiPath();
+  const filePath = githubContentApiPath(remotePath);
+  const current = await readGitHubTextFile(remotePath);
+  const body = {
+    message,
+    branch: PERSISTENCE_GITHUB_BRANCH,
+    content: Buffer.from(String(text || ""), "utf8").toString("base64")
+  };
+  if (current.sha) body.sha = current.sha;
+  const json = await githubApiJson("PUT", `/repos/${repo}/contents/${filePath}`, body);
+  return {
+    ok: true,
+    path: remotePath,
+    sha: json.content && json.content.sha ? json.content.sha : "",
+    commit: json.commit && json.commit.sha ? json.commit.sha : ""
+  };
+}
+
+function scheduleJobKey(job) {
+  if (job && job.id) return `id:${job.id}`;
+  if (job && job.reservationId) return `reservation:${job.reservationId}`;
+  return "";
+}
+
+function scheduleJobUpdatedMs(job) {
+  const candidates = [
+    job && job.deletedAt,
+    job && job.postedAt,
+    job && job.failedAt,
+    job && job.startedAt,
+    job && job.createdAt,
+    job && job.scheduledAt
+  ];
+  for (const value of candidates) {
+    const parsed = Date.parse(value || "");
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+}
+
+function mergeScheduleQueues(primary, secondary) {
+  const map = new Map();
+  for (const job of [...(Array.isArray(primary) ? primary : []), ...(Array.isArray(secondary) ? secondary : [])]) {
+    if (!job || typeof job !== "object") continue;
+    const key = scheduleJobKey(job);
+    if (!key) continue;
+    const existing = map.get(key);
+    if (!existing || scheduleJobUpdatedMs(job) >= scheduleJobUpdatedMs(existing)) {
+      map.set(key, job);
+    }
+  }
+  return Array.from(map.values())
+    .sort((a, b) => Date.parse(a.scheduledAt || 0) - Date.parse(b.scheduledAt || 0));
+}
+
+async function readRemoteScheduleQueue() {
+  if (!isRemoteSchedulePersistenceConfigured()) {
+    return { ok: true, configured: false, exists: false, queue: [] };
+  }
+  const remote = await readGitHubTextFile(PERSISTENCE_SCHEDULE_PATH);
+  if (!remote.exists) return { ok: true, configured: true, exists: false, queue: [] };
+  const parsed = decryptPersistentJson(remote.text);
+  const queue = Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+  return { ok: true, configured: true, exists: true, queue, count: queue.length, sha: remote.sha };
+}
+
+async function restoreScheduleQueueFromPersistentStore(reason = "startup") {
+  if (!isRemoteSchedulePersistenceConfigured()) {
+    return { ok: true, skipped: true, reason: "remote_schedule_not_configured" };
+  }
+  const remote = await readRemoteScheduleQueue();
+  const localQueue = readScheduleQueue();
+  if (!remote.exists) {
+    if (localQueue.length) {
+      const pushed = await syncScheduleQueueToGitHub(`${reason}: seed remote schedule`);
+      return { ok: true, restored: false, seeded: true, localCount: localQueue.length, pushed };
+    }
+    return { ok: true, restored: false, exists: false, localCount: 0 };
+  }
+
+  const merged = mergeScheduleQueues(remote.queue, localQueue);
+  writeScheduleQueue(merged);
+  const result = {
+    ok: true,
+    restored: true,
+    remoteCount: remote.queue.length,
+    localCount: localQueue.length,
+    mergedCount: merged.length,
+    reason
+  };
+  if (merged.length !== remote.queue.length) {
+    result.pushed = await syncScheduleQueueToGitHub(`${reason}: merge remote schedule`);
+  }
+  return result;
 }
 
 function isGitHubActionsSchedulerMode() {
@@ -214,6 +495,35 @@ function gitScheduleSyncError(error) {
 }
 
 async function syncScheduleQueueToGitHub(reason = "schedule update") {
+  if (isRemoteSchedulePersistenceConfigured()) {
+    try {
+      const queue = readScheduleQueue();
+      const encrypted = encryptPersistentJson(queue, "x-scheduled-posts");
+      const written = await writeGitHubTextFile(
+        PERSISTENCE_SCHEDULE_PATH,
+        encrypted,
+        `chore: sync encrypted X schedule [skip ci]`
+      );
+      const result = {
+        ok: true,
+        pushed: true,
+        backend: "github_contents_encrypted",
+        encrypted: true,
+        reason,
+        count: queue.length,
+        path: PERSISTENCE_SCHEDULE_PATH,
+        commit: written.commit || "",
+        at: new Date().toISOString()
+      };
+      log("SCHEDULE_REMOTE_SYNC_DONE", result);
+      return result;
+    } catch (error) {
+      const result = { ok: false, backend: "github_contents_encrypted", error: gitScheduleSyncError(error), reason };
+      log("SCHEDULE_REMOTE_SYNC_FAILED", result);
+      return result;
+    }
+  }
+
   if (!isGitHubActionsSchedulerMode()) {
     return { ok: true, skipped: true, reason: "local_scheduler_mode" };
   }
@@ -244,6 +554,18 @@ async function syncScheduleQueueToGitHub(reason = "schedule update") {
 }
 
 async function pullScheduleQueueFromGitHub(reason = "schedule list") {
+  if (isRemoteSchedulePersistenceConfigured()) {
+    try {
+      const result = await restoreScheduleQueueFromPersistentStore(reason);
+      log("SCHEDULE_REMOTE_RESTORE_DONE", result);
+      return { ...result, backend: "github_contents_encrypted" };
+    } catch (error) {
+      const result = { ok: false, backend: "github_contents_encrypted", error: gitScheduleSyncError(error), reason };
+      log("SCHEDULE_REMOTE_RESTORE_FAILED", result);
+      return result;
+    }
+  }
+
   if (!isGitHubActionsSchedulerMode()) {
     return { ok: true, skipped: true, reason: "local_scheduler_mode" };
   }
@@ -871,7 +1193,10 @@ async function tickScheduleQueue() {
       writeScheduleQueue(queue);
     }
 
-    if (changed) writeScheduleQueue(queue);
+    if (changed) {
+      writeScheduleQueue(queue);
+      await syncScheduleQueueToGitHub("schedule tick");
+    }
   } finally {
     scheduleTickRunning = false;
   }
@@ -2287,7 +2612,8 @@ const server = http.createServer(async (req, res) => {
       host: HOST,
       onlineMode: ONLINE_MODE,
       publicBaseUrl: PUBLIC_BASE_URL || "",
-      dataDir: DATA_DIR
+      dataDir: DATA_DIR,
+      persistence: schedulePersistenceStatus()
     });
     return;
   }
@@ -2780,9 +3106,13 @@ server.on("error", (error) => {
   process.exit(1);
 });
 
-server.listen(PORT, HOST, () => {
+restoreScheduleQueueFromPersistentStore("server startup")
+  .then((restore) => log("SCHEDULE_PERSISTENCE_STARTUP", restore))
+  .catch((error) => rememberError(error, { route: "startup persistence restore" }))
+  .finally(() => server.listen(PORT, HOST, () => {
   const displayUrl = PUBLIC_BASE_URL || `http://${HOST}:${PORT}`;
   log(`Umbrella Parade manga online server running at ${displayUrl}`);
+  log("PERSISTENCE_STATUS", schedulePersistenceStatus());
   console.log("このウィンドウを閉じると投稿サーバーも停止します。");
 
   // GitHub Actions (.github/workflows) が存在する場合はローカルスケジューラーを無効化
@@ -2797,4 +3127,4 @@ server.listen(PORT, HOST, () => {
     setTimeout(tickScheduleQueue, 2000);
     log("ローカルスケジューラー有効（スタンドアロンモード）");
   }
-});
+}));
