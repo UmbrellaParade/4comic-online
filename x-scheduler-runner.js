@@ -4,6 +4,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 const DATA_DIR = path.resolve(process.env.DATA_DIR || __dirname);
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -11,6 +12,12 @@ const SCHEDULE_PATH = path.join(DATA_DIR, "x-scheduled-posts.json");
 const LOG_FILE = path.join(DATA_DIR, "x-scheduler-runner.log");
 const FILE_RETRY_ATTEMPTS = Number(process.env.FILE_RETRY_ATTEMPTS || 10);
 const FILE_RETRY_DELAY_MS = Number(process.env.FILE_RETRY_DELAY_MS || 180);
+const PERSISTENCE_SCHEDULE_PATH = path.resolve(
+  __dirname,
+  String(process.env.PERSISTENCE_SCHEDULE_PATH || ".persistent/x-scheduled-posts.enc.json").replace(/^[/\\]+/, "")
+);
+const PERSISTENCE_ENCRYPTION_KEY = String(process.env.PERSISTENCE_ENCRYPTION_KEY || "").trim();
+const PERSISTENCE_LABEL = "x-scheduled-posts";
 
 // ─── ログ ────────────────────────────────────────────────────────────────────
 
@@ -52,10 +59,78 @@ function withFileRetry(action, label, filePath) {
   throw lastError;
 }
 
+function encryptedPersistenceEnabled() {
+  return !!PERSISTENCE_ENCRYPTION_KEY;
+}
+
+function persistentEncryptionKey() {
+  if (!PERSISTENCE_ENCRYPTION_KEY) throw new Error("PERSISTENCE_ENCRYPTION_KEY is required for encrypted schedule persistence.");
+  return crypto.createHash("sha256").update(PERSISTENCE_ENCRYPTION_KEY, "utf8").digest();
+}
+
+function encryptPersistentJson(value, label = PERSISTENCE_LABEL) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", persistentEncryptionKey(), iv);
+  cipher.setAAD(Buffer.from(label, "utf8"));
+  const encrypted = Buffer.concat([
+    cipher.update(JSON.stringify(value), "utf8"),
+    cipher.final()
+  ]);
+  return {
+    version: 1,
+    algorithm: "aes-256-gcm",
+    label,
+    iv: iv.toString("base64"),
+    tag: cipher.getAuthTag().toString("base64"),
+    data: encrypted.toString("base64"),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function decryptPersistentJson(payload, expectedLabel = PERSISTENCE_LABEL) {
+  if (!payload || payload.algorithm !== "aes-256-gcm") {
+    throw new Error("Unsupported encrypted schedule format.");
+  }
+  const label = payload.label || expectedLabel;
+  if (label !== expectedLabel) throw new Error("Encrypted schedule label mismatch.");
+  const decipher = crypto.createDecipheriv(
+    "aes-256-gcm",
+    persistentEncryptionKey(),
+    Buffer.from(payload.iv, "base64")
+  );
+  decipher.setAAD(Buffer.from(label, "utf8"));
+  decipher.setAuthTag(Buffer.from(payload.tag, "base64"));
+  const decrypted = Buffer.concat([
+    decipher.update(Buffer.from(payload.data, "base64")),
+    decipher.final()
+  ]).toString("utf8");
+  return JSON.parse(decrypted || "[]");
+}
+
+function readEncryptedScheduleQueue() {
+  if (!fs.existsSync(PERSISTENCE_SCHEDULE_PATH)) return [];
+  const raw = fs.readFileSync(PERSISTENCE_SCHEDULE_PATH, "utf8").replace(/^\uFEFF/, "");
+  const payload = JSON.parse(raw || "{}");
+  const parsed = decryptPersistentJson(payload, PERSISTENCE_LABEL);
+  return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+}
+
+function writeEncryptedScheduleQueue(queue) {
+  const dir = path.dirname(PERSISTENCE_SCHEDULE_PATH);
+  fs.mkdirSync(dir, { recursive: true });
+  const payload = JSON.stringify(encryptPersistentJson(Array.isArray(queue) ? queue : [], PERSISTENCE_LABEL), null, 2);
+  withFileRetry(() => {
+    fs.writeFileSync(PERSISTENCE_SCHEDULE_PATH, payload, "utf8");
+  }, "writeEncryptedScheduleQueue", PERSISTENCE_SCHEDULE_PATH);
+}
+
 // ─── スケジューJSONの読み書き ───────────────────────────────────────────────
 
 function readScheduleQueue() {
   try {
+    if (encryptedPersistenceEnabled()) {
+      return readEncryptedScheduleQueue();
+    }
     if (!fs.existsSync(SCHEDULE_PATH)) return [];
     const raw = fs.readFileSync(SCHEDULE_PATH, "utf8").replace(/^﻿/, "");
     const parsed = JSON.parse(raw || "[]");
@@ -67,6 +142,10 @@ function readScheduleQueue() {
 }
 
 function writeScheduleQueue(queue) {
+  if (encryptedPersistenceEnabled()) {
+    writeEncryptedScheduleQueue(queue);
+    return;
+  }
   const payload = JSON.stringify(Array.isArray(queue) ? queue : [], null, 2);
   withFileRetry(() => {
     fs.writeFileSync(SCHEDULE_PATH, payload, "utf8");

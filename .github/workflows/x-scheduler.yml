@@ -1,0 +1,65 @@
+name: X scheduled post runner
+
+on:
+  schedule:
+    # Check the encrypted schedule queue every 5 minutes.
+    - cron: "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: x-scheduler
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  run-scheduler:
+    runs-on: ubuntu-latest
+    env:
+      DATA_DIR: .
+      PERSISTENCE_SCHEDULE_PATH: .persistent/x-scheduled-posts.enc.json
+      PERSISTENCE_ENCRYPTION_KEY: ${{ secrets.PERSISTENCE_ENCRYPTION_KEY }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check encrypted persistence secret
+        run: |
+          if [ -z "$PERSISTENCE_ENCRYPTION_KEY" ]; then
+            echo "::error::PERSISTENCE_ENCRYPTION_KEY is missing from GitHub repository secrets."
+            exit 1
+          fi
+
+      - name: Run scheduler
+        id: run_scheduler
+        continue-on-error: true
+        run: node x-scheduler-runner.js
+
+      - name: Commit updated schedule queue
+        if: always()
+        run: |
+          git config user.name "X Scheduler Bot"
+          git config user.email "xscheduler@umbrella-parade.local"
+          git add .persistent/x-scheduled-posts.enc.json x-scheduled-posts.json 2>/dev/null || true
+          if git diff --staged --quiet; then
+            echo "No schedule changes."
+          else
+            git commit -m "chore: update scheduled post queue [skip ci]"
+            git push
+          fi
+
+      - name: Reflect scheduler failure
+        if: steps.run_scheduler.outcome == 'failure'
+        run: exit 1
