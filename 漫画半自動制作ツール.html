@@ -210,12 +210,44 @@
       border-bottom: 1px solid var(--line);
       font-size: 13px;
     }
-    .api-bar label {
+    .api-bar label,
+    .api-label {
       display: inline-flex;
       align-items: center;
       gap: 6px;
       font-weight: 700;
       white-space: nowrap;
+    }
+    .api-provider-select {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .api-provider-choice {
+      min-height: 36px;
+      padding: 6px 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #ffffff;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .api-provider-choice input {
+      width: auto;
+      min-height: 0;
+      margin: 0;
+    }
+    .api-provider-choice:has(input:checked) {
+      border-color: var(--accent);
+      background: #e8f4f7;
+      color: var(--accent-dark);
+    }
+    .api-key-group {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
     }
     .api-bar input[type="password"],
     .api-bar input[type="text"] {
@@ -228,6 +260,10 @@
       width: auto;
       font-size: 13px;
       padding: 7px 10px;
+    }
+    .hidden-provider-select,
+    .legacy-api-key {
+      display: none;
     }
     .api-status {
       font-size: 12px;
@@ -748,10 +784,18 @@
         align-items: stretch;
       }
       .api-bar label,
+      .api-label,
       .api-bar input[type="password"],
       .api-bar input[type="text"],
       .api-bar select {
         width: 100%;
+      }
+      .api-provider-select,
+      .api-key-group {
+        width: 100%;
+      }
+      .api-provider-choice {
+        flex: 1 1 100%;
       }
       .cols {
         grid-template-columns: 1fr;
@@ -803,22 +847,37 @@
   </header>
 
   <div class="api-bar">
-    <label>AIプロバイダー
-      <select id="aiProvider">
+    <span class="api-label">現在使うAI
+      <select id="aiProvider" class="hidden-provider-select" aria-label="AIプロバイダー">
         <option value="openai">OpenAI</option>
+        <option value="gemini">Gemini</option>
         <option value="claude">Claude (Anthropic)</option>
       </select>
-    </label>
+      <span class="api-provider-select" aria-label="現在使うAI">
+        <label class="api-provider-choice"><input type="checkbox" id="useProvider_openai" class="ai-provider-check" data-provider="openai"> OpenAI</label>
+        <label class="api-provider-choice"><input type="checkbox" id="useProvider_gemini" class="ai-provider-check" data-provider="gemini"> Gemini</label>
+        <label class="api-provider-choice"><input type="checkbox" id="useProvider_claude" class="ai-provider-check" data-provider="claude"> Claude</label>
+      </span>
+    </span>
     <label>AIバージョン
       <select id="aiModel" class="mini-select"></select>
     </label>
     <label>手入力モデル
       <input type="text" id="customModel" class="wide-input" placeholder="例: gpt-5.5 / 最新IDを入力">
     </label>
-    <label>APIキー
-      <input type="password" id="apiKey" placeholder="sk-... または sk-ant-..." autocomplete="off">
-    </label>
-    <button id="saveApiKey" class="secondary" type="button">保存</button>
+    <span class="api-key-group">
+      <label>OpenAI APIキー
+        <input type="password" id="apiKey_openai" placeholder="sk-..." autocomplete="off">
+      </label>
+      <label>Gemini APIキー
+        <input type="password" id="apiKey_gemini" placeholder="AIza..." autocomplete="off">
+      </label>
+      <label>Claude APIキー
+        <input type="password" id="apiKey_claude" placeholder="sk-ant-..." autocomplete="off">
+      </label>
+    </span>
+    <input type="password" id="apiKey" class="legacy-api-key" autocomplete="off">
+    <button id="saveApiKey" class="secondary" type="button">API設定を保存</button>
     <span id="apiStatus" class="api-status"></span>
   </div>
 
@@ -5303,6 +5362,12 @@ ${text}`;
         { value: "gpt-4o", label: "GPT-4o / 互換用" },
         { value: "custom", label: "手入力" },
       ],
+      gemini: [
+        { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash / 標準" },
+        { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+        { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash / 互換用" },
+        { value: "custom", label: "手入力" },
+      ],
       claude: [
         { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 / 現在設定" },
         { value: "claude-3-5-sonnet-latest", label: "Claude Sonnet latest / 互換用" },
@@ -9604,7 +9669,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         alert("漫画画像生成はOpenAIの画像生成APIを使います。APIプロバイダーをOpenAIにしてください。");
         return;
       }
-      const apiKey = localStorage.getItem("apiKey_openai") || $("apiKey").value.trim();
+      const apiKey = savedProviderKey("openai") || providerKeyFromForm("openai");
       if (!apiKey) {
         alert("OpenAI APIキーが設定されていません。上のバーにAPIキーを入力して「保存」してください。");
         return;
@@ -10889,37 +10954,102 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
 
 
     // ── API key management ──────────────────────────────────────
-    function loadApiKey() {
-      const provider = $("aiProvider").value;
-      const key = localStorage.getItem(`apiKey_${provider}`) || "";
-      $("apiKey").value = key;
-      updateApiStatus(key);
+    const AI_PROVIDERS = ["openai", "gemini", "claude"];
+    const AI_PROVIDER_LABELS = {
+      openai: "OpenAI",
+      gemini: "Gemini",
+      claude: "Claude"
+    };
+    const AI_PROVIDER_KEY = "umbrellaMangaCurrentAiProvider";
+
+    function apiKeyInputId(provider) {
+      return `apiKey_${provider}`;
     }
 
-    function updateApiStatus(key) {
+    function currentAiProvider() {
+      const provider = $("aiProvider").value || localStorage.getItem(AI_PROVIDER_KEY) || "openai";
+      return AI_PROVIDERS.includes(provider) ? provider : "openai";
+    }
+
+    function providerKeyFromForm(provider) {
+      const input = $(apiKeyInputId(provider));
+      return input ? input.value.trim() : "";
+    }
+
+    function savedProviderKey(provider) {
+      return localStorage.getItem(`apiKey_${provider}`) || "";
+    }
+
+    function activeProviderKey(provider = currentAiProvider()) {
+      return savedProviderKey(provider) || providerKeyFromForm(provider);
+    }
+
+    function syncApiProviderChecks(provider = currentAiProvider()) {
+      const safeProvider = AI_PROVIDERS.includes(provider) ? provider : "openai";
+      $("aiProvider").value = safeProvider;
+      AI_PROVIDERS.forEach((item) => {
+        const check = $(`useProvider_${item}`);
+        if (check) check.checked = item === safeProvider;
+      });
+      localStorage.setItem(AI_PROVIDER_KEY, safeProvider);
+      $("apiKey").value = activeProviderKey(safeProvider);
+    }
+
+    function loadApiKeys() {
+      AI_PROVIDERS.forEach((provider) => {
+        const input = $(apiKeyInputId(provider));
+        if (input) input.value = savedProviderKey(provider);
+      });
+      syncApiProviderChecks(localStorage.getItem(AI_PROVIDER_KEY) || $("aiProvider").value || "openai");
+      updateApiStatus();
+    }
+
+    function loadApiKey() {
+      loadApiKeys();
+    }
+
+    function updateApiStatus() {
       const el = $("apiStatus");
+      const provider = currentAiProvider();
+      const key = activeProviderKey(provider);
+      const savedCount = AI_PROVIDERS.filter((item) => activeProviderKey(item).length > 10).length;
+      const label = AI_PROVIDER_LABELS[provider] || provider;
       if (key && key.length > 10) {
-        el.textContent = "✓ キー保存済み";
+        el.textContent = `✓ ${label}を使用中・キー保存済み（${savedCount}/3）`;
         el.className = "api-status ok";
       } else {
-        el.textContent = "キー未設定";
+        el.textContent = `${label}を使用中・キー未設定`;
         el.className = "api-status";
       }
     }
 
-    $("saveApiKey").addEventListener("click", () => {
-      const provider = $("aiProvider").value;
-      const key = $("apiKey").value.trim();
-      if (!key) { alert("APIキーを入力してください。"); return; }
-      localStorage.setItem(`apiKey_${provider}`, key);
-      updateApiStatus(key);
-      $("statusText").textContent = "APIキーを保存しました。";
-      setTimeout(() => $("statusText").textContent = "", 1800);
-    });
+    function saveApiKeys(options = {}) {
+      let savedCount = 0;
+      AI_PROVIDERS.forEach((provider) => {
+        const key = providerKeyFromForm(provider);
+        if (key) {
+          localStorage.setItem(`apiKey_${provider}`, key);
+          savedCount += 1;
+        } else {
+          localStorage.removeItem(`apiKey_${provider}`);
+        }
+      });
+      syncApiProviderChecks(currentAiProvider());
+      updateApiStatus();
+      if (!options.quiet) {
+        if (!savedCount) {
+          alert("少なくとも1つAPIキーを入力してください。");
+          return;
+        }
+        $("statusText").textContent = "API設定を保存しました。";
+        setTimeout(() => $("statusText").textContent = "", 1800);
+      }
+    }
 
-    $("aiProvider").addEventListener("change", () => {
+    function changeAiProvider(provider) {
+      if (!AI_PROVIDERS.includes(provider)) return;
+      syncApiProviderChecks(provider);
       refreshModelOptions();
-      loadApiKey();
       loadXLocalServerUrl();
       loadXOAuthSettings();
       loadXAccessToken();
@@ -10928,6 +11058,35 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       refreshXScheduleQueue(false);
       saveModelChoice();
       render();
+      updateApiStatus();
+    }
+
+    $("saveApiKey").addEventListener("click", () => {
+      saveApiKeys();
+    });
+
+    document.querySelectorAll(".ai-provider-check").forEach((check) => {
+      check.addEventListener("change", () => {
+        if (check.checked) {
+          changeAiProvider(check.dataset.provider);
+        } else {
+          syncApiProviderChecks(currentAiProvider());
+        }
+      });
+    });
+
+    AI_PROVIDERS.forEach((provider) => {
+      const input = $(apiKeyInputId(provider));
+      if (input) {
+        input.addEventListener("input", () => {
+          if (provider === currentAiProvider()) $("apiKey").value = input.value.trim();
+          updateApiStatus();
+        });
+      }
+    });
+
+    $("aiProvider").addEventListener("change", () => {
+      changeAiProvider($("aiProvider").value);
     });
     $("aiModel").addEventListener("change", () => {
       updateCustomModelVisibility();
@@ -11039,6 +11198,42 @@ ${optionalOutput ? optionalOutput + "\n" : ""}  "p1": "1コマ目のセリフや
       return parts.join("\n");
     }
 
+    async function callGemini(apiKey, prompt) {
+      const model = encodeURIComponent(getSelectedModel() || "gemini-2.5-flash");
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey
+        },
+        body: JSON.stringify({
+          contents: [{
+            role: "user",
+            parts: [{ text: `${prompt}\n\n必ずJSONのみを返してください。説明文やMarkdownコードフェンスは不要です。` }]
+          }],
+          generationConfig: {
+            temperature: 0.8,
+            maxOutputTokens: 2048
+          }
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        const message = err.error?.message || err.message || `Gemini error: ${res.status}`;
+        throw new Error(message);
+      }
+      const json = await res.json();
+      const parts = [];
+      (json.candidates || []).forEach((candidate) => {
+        (candidate.content?.parts || []).forEach((part) => {
+          if (part.text) parts.push(part.text);
+        });
+      });
+      const text = parts.join("\n").trim();
+      if (!text) throw new Error("Geminiの返答テキストを取得できませんでした。");
+      return text;
+    }
+
     async function callClaude(apiKey, prompt) {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -11105,10 +11300,10 @@ ${optionalOutput ? optionalOutput + "\n" : ""}  "p1": "1コマ目のセリフや
         return;
       }
 
-      const provider = $("aiProvider").value;
-      const apiKey = localStorage.getItem(`apiKey_${provider}`) || $("apiKey").value.trim();
+      const provider = currentAiProvider();
+      const apiKey = activeProviderKey(provider);
       if (!apiKey) {
-        alert("APIキーが設定されていません。\n上のバーにAPIキーを入力して「保存」してください。");
+        alert(`${AI_PROVIDER_LABELS[provider] || provider}のAPIキーが設定されていません。\n上のバーにAPIキーを入力して「API設定を保存」してください。`);
         return;
       }
 
@@ -11130,6 +11325,8 @@ ${optionalOutput ? optionalOutput + "\n" : ""}  "p1": "1コマ目のセリフや
         let raw;
         if (provider === "openai") {
           raw = await callOpenAI(apiKey, prompt);
+        } else if (provider === "gemini") {
+          raw = await callGemini(apiKey, prompt);
         } else {
           raw = await callClaude(apiKey, prompt);
         }
@@ -11188,6 +11385,7 @@ ${optionalOutput ? optionalOutput + "\n" : ""}  "p1": "1コマ目のセリフや
     $("reGenerate").addEventListener("click", autoGenerate);
 
     async function initializeTool() {
+      loadApiKeys();
       refreshModelOptions();
       const startupStoredCharacter = storedActiveCharacter();
       loadDraft();
@@ -11206,7 +11404,6 @@ ${optionalOutput ? optionalOutput + "\n" : ""}  "p1": "1コマ目のセリフや
       restoreScheduledTimeForCharacter(activeScheduleCharacter, val("scheduledTime") || localStorage.getItem(LAST_TIME_KEY) || "20:00");
       if (!val("calendarMonth")) $("calendarMonth").value = today().slice(0, 7);
       initCollapsibleState();
-      loadApiKey();
       loadXLocalServerUrl();
       loadXOAuthSettings();
       loadXAccessToken();
