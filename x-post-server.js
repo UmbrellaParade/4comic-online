@@ -1421,10 +1421,11 @@ async function handleOAuthCallback(req, res) {
 async function handleOAuthRefresh(req, res) {
   const raw = await readBody(req);
   const payload = JSON.parse(raw || "{}");
-  const clientId = String(payload.clientId || "").trim();
-  const clientSecret = String(payload.clientSecret || "").trim();
-  const refreshToken = String(payload.refreshToken || "").trim();
   const character = String(payload.character || "").trim();
+  const stored = storedOAuthResult(character) || {};
+  const clientId = String(payload.clientId || stored.clientId || "").trim();
+  const clientSecret = String(payload.clientSecret || stored.clientSecret || "").trim();
+  const refreshToken = String(payload.refreshToken || stored.token?.refresh_token || "").trim();
   if (!clientId) throw new Error("X OAuth Client IDを入力してください。");
   if (!refreshToken) throw new Error("Refresh Tokenが保存されていません。もう一度Xログインで取得してください。");
   const token = await oauthTokenRequest({

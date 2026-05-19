@@ -7333,7 +7333,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       return Number(localStorage.getItem(xTokenExpiresAtKey(character)) || 0);
     }
 
-    function saveOAuthTokenBundle(character, token) {
+    function saveOAuthTokenBundle(character, token, options = {}) {
       const targetCharacter = xTokenCharacter(character);
       const accessToken = validateXAccessToken(token && token.access_token);
       localStorage.setItem(xAccessTokenKey(targetCharacter), accessToken);
@@ -7344,8 +7344,44 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       }
       if (xTokenCharacter() === targetCharacter && $("xAccessToken")) $("xAccessToken").value = accessToken;
       updateXOAuthSavedStatus(targetCharacter);
-      syncXTokenToLocalServer(targetCharacter, false);
-      setXPostStatus(`${targetCharacter}用のOAuth 2.0 User Context tokenを保存しました。`);
+      if (options.sync !== false) syncXTokenToLocalServer(targetCharacter, false);
+      if (!options.quiet) setXPostStatus(`${targetCharacter}用のOAuth 2.0 User Context tokenを保存しました。`);
+    }
+
+    async function restoreXOAuthTokenFromServer(character = xTokenCharacter(), options = {}) {
+      const targetCharacter = xTokenCharacter(character);
+      const hasAccessToken = !!getXAccessTokenForCharacter(targetCharacter);
+      const hasRefreshToken = !!getXRefreshTokenForCharacter(targetCharacter);
+      const expiresAt = getXTokenExpiresAt(targetCharacter);
+      const needsRestore = options.force === true
+        || !hasAccessToken
+        || !hasRefreshToken
+        || (!!expiresAt && Date.now() > expiresAt - 5 * 60 * 1000);
+      if (!needsRestore) {
+        updateXOAuthSavedStatus(targetCharacter);
+        return false;
+      }
+      try {
+        const endpoint = `${scheduleServerUrl()}/oauth/latest?character=${encodeURIComponent(targetCharacter)}`;
+        const response = await fetch(endpoint, { method: "GET" });
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok || !json.ok || !json.ready || !json.token || !json.token.access_token) {
+          updateXOAuthSavedStatus(targetCharacter);
+          return false;
+        }
+        saveOAuthTokenBundle(json.character || targetCharacter, json.token, { quiet: true, sync: false });
+        if (xTokenCharacter() === targetCharacter) {
+          if ($("xAccessToken")) $("xAccessToken").value = getXAccessTokenForCharacter(targetCharacter);
+          setXOAuthStatus("取得済み/自動復元");
+        }
+        if (options.showMessage) setXPostStatus(`${targetCharacter}用のX OAuthを保存済みデータから復元しました。`);
+        return true;
+      } catch (error) {
+        console.warn("X OAuth token restore failed.", error);
+        updateXOAuthSavedStatus(targetCharacter);
+        if (options.showMessage) setXPostStatus(`${targetCharacter}用のX OAuth復元エラー: ${error.message}`, "err");
+        return false;
+      }
     }
 
     async function syncXTokenToLocalServer(character = xTokenCharacter(), showMessage = false) {
@@ -7508,7 +7544,6 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         ? saveXOAuthSettings(false, targetCharacter)
         : getXOAuthSettingsForCharacter(targetCharacter);
       const { clientId, clientSecret } = settings;
-      if (!clientId) throw new Error("X OAuth Client IDを入力してください。");
       const response = await fetch(`${scheduleServerUrl()}/oauth/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -7523,6 +7558,9 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
 
     async function getUsableXAccessTokenForCharacter(character = xTokenCharacter(), allowRefresh = true) {
       const targetCharacter = xTokenCharacter(character);
+      if (!getXAccessTokenForCharacter(targetCharacter) || !getXRefreshTokenForCharacter(targetCharacter)) {
+        await restoreXOAuthTokenFromServer(targetCharacter);
+      }
       if (allowRefresh && shouldRefreshXToken(targetCharacter) && getXRefreshTokenForCharacter(targetCharacter)) {
         return await refreshXAccessToken(targetCharacter, false);
       }
@@ -10791,6 +10829,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       loadSnsTextSettings(character);
       loadXOAuthSettings(character);
       loadXAccessToken();
+      await restoreXOAuthTokenFromServer(character);
       loadWordPressSettings(character);
       refreshServerImportDirectoryState(character, false);
       loadImageDownloadNameConfig(character);
@@ -11478,6 +11517,7 @@ ${optionalOutput ? optionalOutput + "\n" : ""}  "p1": "1コマ目のセリフや
       loadXLocalServerUrl();
       loadXOAuthSettings();
       loadXAccessToken();
+      await restoreXOAuthTokenFromServer(startupCharacter);
       loadWordPressSettings(localStorage.getItem(WP_SELECTED_CHARACTER_KEY) || startupCharacter);
       loadImageDownloadNameConfig(startupCharacter);
       loadImageDownloadFolder(startupCharacter);
