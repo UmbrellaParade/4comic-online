@@ -2292,8 +2292,9 @@ function wordpressImageBlock(media, altText) {
 <!-- /wp:image -->`;
 }
 
-function wordpressMetaPayload(featuredMediaId, ogImageUrl, swell = {}) {
-  return {
+function wordpressMetaPayload(featuredMediaId, ogImageUrl, swell = {}, excerpt = "") {
+  const description = String(swell.description || excerpt || "").trim();
+  const payload = {
     // SWELL display override settings.
     swell_meta_show_thumb: swell.showThumb || "show",
     swell_meta_show_related: swell.showRelated || "show",
@@ -2309,6 +2310,19 @@ function wordpressMetaPayload(featuredMediaId, ogImageUrl, swell = {}) {
     og_image: ogImageUrl || "",
     og_image_id: featuredMediaId || ""
   };
+  if (description) {
+    Object.assign(payload, {
+      ssp_meta_description: description,
+      ssp_meta_og_description: description,
+      "_yoast_wpseo_metadesc": description,
+      rank_math_description: description,
+      aioseo_description: description,
+      aioseo_og_description: description,
+      og_description: description,
+      twitter_description: description
+    });
+  }
+  return payload;
 }
 
 
@@ -2365,6 +2379,64 @@ async function wordpressXmlRpc(siteUrl, methodName, params) {
   const fault = xmlRpcFaultMessage(text);
   if (fault) throw new Error(fault);
   return text;
+}
+
+function stripHtml(value) {
+  return String(value || "").replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+}
+
+function wordpressExcerptValue(post) {
+  const excerpt = post && post.excerpt;
+  if (!excerpt) return "";
+  if (typeof excerpt === "string") return stripHtml(excerpt);
+  return stripHtml(excerpt.raw || excerpt.rendered || "");
+}
+
+async function readWordPressExcerpt(siteUrl, username, appPassword, postId) {
+  const post = await wordpressJson(siteUrl, username, appPassword, `/posts/${postId}`, {
+    params: { context: "edit" }
+  });
+  return wordpressExcerptValue(post);
+}
+
+async function updateWordPressExcerptXmlRpc(siteUrl, username, appPassword, postId, excerpt) {
+  await wordpressXmlRpc(siteUrl, "wp.editPost", [
+    1,
+    String(username || "").trim(),
+    normalizeApplicationPassword(appPassword),
+    Number(postId),
+    { post_excerpt: String(excerpt || "") }
+  ]);
+}
+
+async function applyWordPressExcerpt(siteUrl, username, appPassword, postId, excerpt) {
+  const wanted = String(excerpt || "").trim();
+  if (!wanted) return { method: "skipped", excerpt: "" };
+  let restError = null;
+  try {
+    await wordpressJson(siteUrl, username, appPassword, `/posts/${postId}`, {
+      method: "POST",
+      body: { excerpt: wanted }
+    });
+    const current = await readWordPressExcerpt(siteUrl, username, appPassword, postId);
+    if (current === wanted) return { method: "rest", excerpt: current };
+  } catch (error) {
+    restError = error;
+    log("WP_EXCERPT_REST_WARNING", { postId, message: error.message });
+  }
+
+  try {
+    await updateWordPressExcerptXmlRpc(siteUrl, username, appPassword, postId, wanted);
+    const current = await readWordPressExcerpt(siteUrl, username, appPassword, postId).catch(() => wanted);
+    if (!current || current === wanted) return { method: "xmlrpc", excerpt: current || wanted };
+    return { method: "xmlrpc-unverified", excerpt: current };
+  } catch (error) {
+    const combined = restError ? `${restError.message} / XML-RPC: ${error.message}` : error.message;
+    const excerptError = new Error(combined);
+    excerptError.restError = restError;
+    excerptError.xmlRpcError = error;
+    throw excerptError;
+  }
 }
 
 function xmlRpcDecode(value) {
@@ -2596,7 +2668,15 @@ async function handlePostWordPress(req, res) {
         body: postBody
       });
 
-  const metaPayload = wordpressMetaPayload(featuredMedia.id, payload.ogImageUrl || featuredImageUrl, payload.swell || {});
+  try {
+    const excerptResult = await applyWordPressExcerpt(siteUrl, username, appPassword, post.id, excerpt);
+    log("WP_EXCERPT_APPLIED", { postId: post.id, method: excerptResult.method });
+  } catch (error) {
+    warnings.push("WordPressの抜粋文を自動反映できませんでした。投稿本文とは別の警告です。");
+    log("WP_EXCERPT_WARNING", { postId: post.id, message: error.message });
+  }
+
+  const metaPayload = wordpressMetaPayload(featuredMedia.id, payload.ogImageUrl || featuredImageUrl, payload.swell || {}, excerpt);
   try {
     const metaResult = await applyWordPressPostMeta(siteUrl, username, appPassword, post.id, metaPayload);
     log("WP_META_APPLIED", { postId: post.id, method: metaResult.method });
@@ -2612,6 +2692,7 @@ async function handlePostWordPress(req, res) {
       link: post.link,
       status: post.status,
       slug: post.slug,
+      excerpt,
       date: post.date || "",
       date_gmt: post.date_gmt || ""
     },
