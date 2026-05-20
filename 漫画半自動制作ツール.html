@@ -3933,6 +3933,81 @@
         : `${character}：追加読み込み画像なし`;
     }
 
+    async function autoRecoverServerRuntimeImages() {
+      if (!onlineStateAvailable()) return;
+      const allPersisted = await getAllPersistedRuntimeImages();
+      if (!allPersisted.length) return;
+
+      // サーバーに現在存在する画像IDセット
+      const serverIdSet = new Set(
+        Object.values(runtimeImagesByCharacter)
+          .flat()
+          .filter((img) => img.serverRuntimeId)
+          .map((img) => img.serverRuntimeId)
+      );
+
+      // 以前サーバーにあったがサーバーに見つからない画像（再起動などで消えた）
+      const toRecover = allPersisted.filter(
+        (img) => img.serverRuntimeId && img.dataUrl && !serverIdSet.has(img.serverRuntimeId)
+      );
+      if (!toRecover.length) return;
+
+      console.log(`サーバー画像を自動復元: ${toRecover.length}枚`);
+      const pathRemap = {};
+
+      for (const img of toRecover) {
+        const character = img.character || "ヴェル13世";
+        const oldPath = serverRuntimePath(img.serverRuntimeId);
+        try {
+          const saved = await uploadRuntimeImagesToServer(character, [{
+            dataUrl: img.dataUrl,
+            name: img.name || img.localPath || "recovered.png",
+            category: img.category || "オンライン保存画像",
+          }]);
+          if (saved.length > 0) {
+            const newPath = saved[0].path;
+            pathRemap[oldPath] = newPath;
+            // メモリ上の古いエントリを新しいものに置き換え
+            const chars = runtimeImagesByCharacter[character] || [];
+            const oldIdx = chars.findIndex((ci) => ci.serverRuntimeId === img.serverRuntimeId || ci.id === img.id);
+            if (oldIdx >= 0) chars.splice(oldIdx, 1, saved[0]);
+            else chars.push(saved[0]);
+            runtimeImagesByCharacter[character] = chars;
+          }
+          // 古いIndexedDBエントリを削除（uploadRuntimeImagesToServerが新エントリを作成済み）
+          await deletePersistedRuntimeImage(img.id).catch(() => {});
+        } catch (e) {
+          console.warn("画像自動復元失敗:", img.name, e);
+        }
+      }
+
+      if (Object.keys(pathRemap).length === 0) return;
+
+      // 画像セットのパスを新パスで更新し、クラウドへ同期
+      for (const character of cloudSyncCharacters()) {
+        const raw = localStorage.getItem(imageSetKey(character));
+        if (!raw) continue;
+        try {
+          const set = JSON.parse(raw);
+          let changed = false;
+          for (const slotId of IMAGE_SET_IDS) {
+            if (set[slotId] && pathRemap[set[slotId]]) {
+              set[slotId] = pathRemap[set[slotId]];
+              changed = true;
+            }
+          }
+          if (changed) {
+            localStorage.setItem(imageSetKey(character), JSON.stringify(set));
+            syncServerClientState(imageSetKey(character), set);
+            if ((val("character") || "ヴェル13世") === character) applyImageSet(set);
+          }
+        } catch { /* ignore */ }
+      }
+      updateProfilePanel();
+      updateRuntimeImageStatus();
+      updateImageSetStatus();
+    }
+
     function findImageBySelectValue(selectId) {
       const value = val(selectId);
       if (!value) return null;
@@ -12538,6 +12613,8 @@ ${JSON.stringify({
         console.error(error);
         $("runtimeImageStatus").textContent = "保存済み追加画像を読み込めませんでした。";
       }
+      // サーバーから消えた画像をIndexedDBバックアップから自動復元（バックグラウンド）
+      autoRecoverServerRuntimeImages().catch((e) => console.warn("画像自動復元エラー:", e));
       await preloadImportDirectoryHandles();
       await preloadImageDownloadDirectoryHandles();
       await refreshImageDownloadFolderDisplay(val("character") || "ヴェル13世");
