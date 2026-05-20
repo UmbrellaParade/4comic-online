@@ -1100,6 +1100,7 @@
               <option value="漫画タイトルサムネ">タイトルサムネ</option>
               <option value="読み込み画像">その他</option>
             </select>
+            <button id="recategorizeImages" class="secondary" type="button">読み込み画像→変更</button>
             <button id="clearRuntimeImages" class="secondary" type="button">追加画像クリア</button>
           </div>
           <input id="imageFolderInput" type="file" accept="image/*" multiple webkitdirectory style="display:none">
@@ -3927,6 +3928,45 @@
       updateRuntimeImageStatus();
       $("statusText").textContent = "追加読み込み画像をクリアしました。";
       setTimeout(() => $("statusText").textContent = "", 1800);
+    }
+
+    async function updateServerRuntimeImageCategory(imageId, character, category) {
+      const response = await fetch(`${scheduleServerUrl()}/runtime-images/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: imageId, character, category })
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json.ok) throw new Error(json.error || `HTTP ${response.status}`);
+    }
+
+    async function recategorizeRuntimeImages() {
+      const character = val("character") || "ヴェル13世";
+      const newCategory = $("imageFileCategory")?.value || "人物画像";
+      const images = runtimeImagesByCharacter[character] || [];
+      const toUpdate = images.filter((img) => img.category === RUNTIME_IMAGE_PREFIX);
+      if (!toUpdate.length) {
+        $("statusText").textContent = "「読み込み画像」カテゴリの画像がありません。";
+        setTimeout(() => $("statusText").textContent = "", 1800);
+        return;
+      }
+      $("statusText").textContent = `カテゴリ変更中… ${toUpdate.length}枚`;
+      let done = 0;
+      for (const img of toUpdate) {
+        img.category = newCategory;
+        if (img.id) await putPersistedRuntimeImage({ ...img }).catch(() => {});
+        if (img.serverPersisted && img.id) {
+          await updateServerRuntimeImageCategory(img.id, character, newCategory).catch((e) =>
+            console.warn("サーバーカテゴリ更新失敗:", e)
+          );
+        }
+        done++;
+      }
+      syncServerClientState(imageSetKey(character), JSON.parse(localStorage.getItem(imageSetKey(character)) || "{}"));
+      updateProfilePanel();
+      updateRuntimeImageStatus();
+      $("statusText").textContent = `${done}枚を「${newCategory}」に変更しました。`;
+      setTimeout(() => $("statusText").textContent = "", 2000);
     }
 
     function updateRuntimeImageStatus() {
@@ -11416,6 +11456,10 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     $("deleteImagePattern").addEventListener("click", deleteImagePattern);
     $("loadImageFolder").addEventListener("click", () => $("imageFolderInput").click());
     $("loadImageFiles").addEventListener("click", () => $("imageFileInput").click());
+    $("recategorizeImages").addEventListener("click", () => recategorizeRuntimeImages().catch((e) => {
+      console.error(e);
+      $("statusText").textContent = `カテゴリ変更エラー: ${e.message}`;
+    }));
     $("clearRuntimeImages").addEventListener("click", clearRuntimeImages);
     $("imageFolderInput").addEventListener("change", (event) => {
       addRuntimeImages(event.target.files).catch((error) => {

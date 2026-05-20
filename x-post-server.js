@@ -1819,6 +1819,19 @@ async function handleDeleteRuntimeImage(req, res) {
   sendJson(res, 200, { ok: true, deleted: before.length - after.length });
 }
 
+async function handleUpdateRuntimeImage(req, res) {
+  const payload = JSON.parse(await readBody(req) || "{}");
+  const id = String(payload.id || "").trim();
+  const character = String(payload.character || "").trim();
+  if (!id) throw new Error("画像IDがありません。");
+  const images = readRuntimeImages();
+  const idx = images.findIndex((img) => img.id === id && (!character || img.character === character));
+  if (idx < 0) throw new Error("画像が見つかりません。");
+  if (payload.category !== undefined) images[idx].category = String(payload.category).trim();
+  writeRuntimeImages(images);
+  sendJson(res, 200, { ok: true, image: publicRuntimeImage(images[idx]) });
+}
+
 function extensionForMimeType(mimeType) {
   const map = {
     "image/jpeg": ".jpg",
@@ -2857,6 +2870,16 @@ const server = http.createServer(async (req, res) => {
     } catch (error) {
       rememberError(error, { route: "/runtime-images/delete" });
       sendJson(res, error.status || 500, { ok: false, error: error.message || "Runtime image delete error." });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && requestUrl.pathname === "/runtime-images/update") {
+    try {
+      await handleUpdateRuntimeImage(req, res);
+    } catch (error) {
+      rememberError(error, { route: "/runtime-images/update" });
+      sendJson(res, error.status || 500, { ok: false, error: error.message || "Runtime image update error." });
     }
     return;
   }
