@@ -1116,11 +1116,6 @@
           </label>
         </div>
 
-        <div class="actions" style="margin-top:8px;">
-          <button id="adjustToneBtn" class="secondary" type="button">🎭 口調をキャラに合わせる</button>
-        </div>
-        <div id="adjustToneResult" class="image-status-line"></div>
-
         <details class="workflow-box collapsible-box" id="aiEditorPanel" open>
           <summary class="workflow-head collapsible-summary">
             <div class="workflow-title">AI編集者</div>
@@ -11642,7 +11637,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
 `
         : "";
       const manualIdeaBlock = manualIdeaSeed
-        ? `\n## ネタにしたい内容・想い（ユーザー指定）\n${manualIdeaSeed}\n\n## 指定内容から作る時のルール（最優先）\n- 上の指定文は「そのまま漫画にしてほしい素材」として扱う。テーマ・感情・方向性を大きく変えない。\n- 指定文にタイトルが明示されている場合（例：「タイトル：〜」や冒頭の題名）は、そのタイトルをそのまま output の title に使う。変えない。\n- 指定文に含まれる感情・体験・キーワードを必ず台本に反映させる。別のテーマや感情に置き換えない。\n- 4コマの感情の流れは指定文の内容に従う。上の「制作ルール」のコマ構成より指定文の流れを優先する。\n- セリフは説明文にしない。キャラが実際に口にする会話・独白の形で書く。\n- 指定文をそのまま長く引用しない。漫画用の短いセリフ・描写として凝縮する。\n- 選択中キャラクターの言葉づかいに合わせる。\n- べるぼが選択されている場合は、指定文の感情・体験を「制作ログ」や「教育発信」に変換しない。指定された感情に正直に、読者を追い込まず、上から教えない形で表現する。\n- ヴェル13世が選択されている場合は、何者にもなれなかった人がそれでも一歩進む葛藤に寄せる。\n- カーラ・マンソンが選択されている場合は、本音と執着、自分を取り戻す物語に寄せる。\n`
+        ? `\n## ネタにしたい内容・想い（ユーザー指定）\n${manualIdeaSeed}\n\n## 指定内容から作る時のルール（最優先）\n- 上の指定文は「そのまま漫画にしてほしい素材」として扱う。テーマ・感情・方向性を大きく変えない。\n- 指定文にタイトルが明示されている場合（例：「タイトル：〜」や冒頭の題名）は、そのタイトルをそのまま output の title に使う。変えない。\n- 指定文に含まれる感情・体験・キーワードを必ず台本に反映させる。別のテーマや感情に置き換えない。\n- 4コマの感情の流れは指定文の内容に従う。上の「制作ルール」のコマ構成より指定文の流れを優先する。\n- セリフは説明文にしない。キャラが実際に口にする会話・独白の形で書く。\n- 各コマのセリフは必ず上の「口調・言葉づかい」に記載されたキャラクターの話し方で書く。地の文や説明口調にしない。\n- 指定文をそのまま長く引用しない。漫画用の短いセリフ・描写として凝縮する。\n- べるぼが選択されている場合は、指定文の感情・体験を「制作ログ」や「教育発信」に変換しない。指定された感情に正直に、読者を追い込まず、上から教えない形で表現する。\n- ヴェル13世が選択されている場合は、何者にもなれなかった人がそれでも一歩進む葛藤に寄せる。\n- カーラ・マンソンが選択されている場合は、本音と執着、自分を取り戻す物語に寄せる。\n`
         : "";
       const optionalOutput = [
         wantAutoPostText ? '  "autoPostText": "このネタに合う短い投稿文。ハッシュタグは入れない",': "",
@@ -12223,84 +12218,6 @@ ${JSON.stringify({
       });
     }
 
-    function buildToneAdjustPrompt() {
-      const character = val("character") || "ヴェル13世";
-      const info = characterData[character] || characterData["ヴェル13世"];
-      const current = editorIdeaSnapshot();
-      return `あなたはUmbrella Paradeの漫画制作アシスタントです。以下の4コマ漫画台本の内容・テーマ・感情・ストーリーはそのままに、キャラクター「${character}」の口調・言葉づかいに合わせてセリフを書き直してください。
-
-## キャラクター: ${character}
-${info.profileSummary}
-
-## 口調・言葉づかい
-${info.speechStyle || "選択中キャラクターの既存設定に合わせる。"}
-
-## 書き直すルール（厳守）
-- テーマ、感情、ストーリーの流れは一切変えない。
-- 変えるのはセリフの言葉づかい・口調だけ。
-- キャラクターが実際に口にしそうな会話・独白形式に整える。
-- セリフは短く、漫画のコマに収まる量にする。
-- 描写（スラッシュ以降のト書き）はそのまま残してよい。
-
-## 現在の台本
-タイトル: ${current.title}
-サブコピー: ${current.subtitle}
-テーマ: ${current.theme}
-狙い: ${current.aim}
-1コマ目: ${current.p1}
-2コマ目: ${current.p2}
-3コマ目: ${current.p3}
-4コマ目: ${current.p4}
-
-## 出力形式（必ずこのJSONのみ返してください）
-{
-  "title": "タイトル（基本そのまま）",
-  "subtitle": "サブコピー（基本そのまま）",
-  "theme": "テーマ（そのまま）",
-  "aim": "狙い（そのまま）",
-  "p1": "1コマ目（口調調整後）",
-  "p2": "2コマ目（口調調整後）",
-  "p3": "3コマ目（口調調整後）",
-  "p4": "4コマ目（口調調整後）"
-}`;
-    }
-
-    async function adjustToneToCharacter() {
-      const resultEl = $("adjustToneResult");
-      const btn = $("adjustToneBtn");
-      if (!btn) return;
-      const oldText = btn.textContent;
-      btn.disabled = true;
-      btn.innerHTML = `<span class="spinner"></span>口調調整中…`;
-      if (resultEl) { resultEl.textContent = ""; resultEl.className = "image-status-line"; }
-      try {
-        const result = await callActiveAiJson(buildToneAdjustPrompt());
-        const current = editorIdeaSnapshot();
-        const snapshot = {
-          title: result.title || current.title,
-          subtitle: result.subtitle || current.subtitle,
-          theme: result.theme || current.theme,
-          aim: result.aim || current.aim,
-          p1: result.p1 || current.p1,
-          p2: result.p2 || current.p2,
-          p3: result.p3 || current.p3,
-          p4: result.p4 || current.p4,
-        };
-        applyEditorIdeaSnapshot(snapshot);
-        if (resultEl) {
-          resultEl.textContent = `${val("character") || "キャラクター"}の口調に合わせました。`;
-        }
-      } catch (e) {
-        if (resultEl) {
-          resultEl.textContent = `口調調整に失敗しました: ${e.message}`;
-          resultEl.className = "image-status-line err";
-        }
-      } finally {
-        btn.disabled = false;
-        btn.textContent = oldText;
-      }
-    }
-
     function goToImageGenerationFromEditor() {
       if ($("mangaImageGenBox")) $("mangaImageGenBox").scrollIntoView({ behavior: "smooth", block: "start" });
       if ($("mangaGenBtn")) $("mangaGenBtn").focus();
@@ -12464,7 +12381,6 @@ ${info.speechStyle || "選択中キャラクターの既存設定に合わせる
     $("autoGenerate").addEventListener("click", autoGenerate);
     $("manualGenerateIdea").addEventListener("click", () => autoGenerate({ manualMode: true }));
     $("reGenerate").addEventListener("click", autoGenerate);
-    $("adjustToneBtn").addEventListener("click", adjustToneToCharacter);
 
     async function initializeTool() {
       loadCloudSyncKey();
