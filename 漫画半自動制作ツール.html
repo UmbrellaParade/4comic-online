@@ -889,6 +889,7 @@
     <a href="#section-input">入力</a>
     <a href="#characterPresetPanel">プリセット・画像</a>
     <a href="#ideaStockPanel">ネタ台本</a>
+    <a href="#aiEditorPanel">AI編集者</a>
     <a href="#mangaImageGenBox">漫画画像生成</a>
     <a href="#preReservationStockPanel">予約前ストック</a>
     <a href="#snsReservationPanel">SNS予約投稿</a>
@@ -1109,6 +1110,35 @@
             <textarea id="p4" placeholder="小さな行動。"></textarea>
           </label>
         </div>
+
+        <details class="workflow-box collapsible-box" id="aiEditorPanel" open>
+          <summary class="workflow-head collapsible-summary">
+            <div class="workflow-title">AI編集者</div>
+            <span class="collapse-hint">クリックで開閉</span>
+          </summary>
+          <div class="collapsible-content">
+            <p class="hint">画像生成前に、ネタと画像プロンプトの失敗確率を確認します。75点以上なら前へ進む設計です。</p>
+            <div class="actions">
+              <button id="evaluateScriptBtn" class="generate-ai-btn" type="button">ネタを編集チェック</button>
+              <button id="brushupScriptBtn" class="secondary" type="button">ブラッシュアップする</button>
+              <button id="editorGoImageBtn" class="secondary" type="button">画像生成へ進む</button>
+            </div>
+            <div id="scriptEvaluationResult" class="image-status-line"></div>
+            <label class="tall">AI編集者メモ
+              <textarea id="editorNotes" rows="4" readonly placeholder="総合点、判定、一番弱い点、次に押すべきボタンが表示されます。"></textarea>
+            </label>
+            <div class="actions">
+              <button id="evaluateImagePromptBtn" class="secondary" type="button">画像成功率を判定</button>
+              <button id="reviseImagePromptBtn" class="secondary" type="button">プロンプトを1回修正</button>
+              <button id="applyRevisedPromptBtn" class="secondary" type="button">修正済みプロンプトを使う</button>
+              <button id="clearRevisedPromptBtn" class="secondary" type="button">修正プロンプト解除</button>
+            </div>
+            <div id="imagePromptEvaluationResult" class="image-status-line"></div>
+            <label class="tall">修正済み画像プロンプト
+              <textarea id="editorRevisedImagePrompt" rows="6" placeholder="プロンプト修正AIの結果が入ります。適用するとプロンプトコピー/API生成に使われます。"></textarea>
+            </label>
+          </div>
+        </details>
 
         <div class="check-row">
           <label><input id="aiLabel" type="checkbox" checked> AI生成表記</label>
@@ -1610,6 +1640,10 @@
     const SNS_TEXT_CHECK_IDS = ["createAutoPostText", "includeAutoPostText", "createIdeaHashtags", "includeIdeaHashtags"];
     let activeTab = "card";
     let activeSnsSettingsCharacter = "";
+    let lastScriptEvaluation = null;
+    let lastImagePromptEvaluation = null;
+    let editorImagePromptOverride = "";
+    let editorImagePromptFingerprint = "";
 
     const characterData = {
       "ヴェル13世": {
@@ -4988,7 +5022,7 @@ ${mangaReference}
 ## 画像生成プロンプト
 
 \`\`\`text
-${imagePrompt(d)}
+${activeImagePrompt(d)}
 \`\`\`
 
 ## ネガティブプロンプト
@@ -5295,6 +5329,30 @@ Final copy: 「${logoProfile.finalCopy}」
 ${d.aiLabel ? "Disclosure note: AI-generated media may be labeled if required by the platform." : ""}`;
     }
 
+    function editorPromptFingerprint(d = data()) {
+      return JSON.stringify({
+        character: d.character,
+        title: d.title,
+        subtitle: d.subtitle,
+        theme: d.theme,
+        p1: d.p1,
+        p2: d.p2,
+        p3: d.p3,
+        p4: d.p4,
+        subCharacters: d.subCharacters || [],
+        referenceImageRaw: d.referenceImageRaw || "",
+        mangaRefImageRaw: d.mangaRefImageRaw || "",
+        imagePatternName: d.imagePatternName || ""
+      });
+    }
+
+    function activeImagePrompt(d = data()) {
+      if (editorImagePromptOverride && editorImagePromptFingerprint === editorPromptFingerprint(d)) {
+        return editorImagePromptOverride;
+      }
+      return imagePrompt(d);
+    }
+
     function splitHashtags(text) {
       return String(text || "")
         .replace(/[、,]+/g, " ")
@@ -5357,11 +5415,11 @@ ${text}`;
     }
 
     function allOutput(d) {
-      return `# Obsidianカード\n\n${card(d)}\n\n# 画像生成プロンプト\n\n${imagePrompt(d)}\n\n# ネガティブプロンプト\n\n${d.info.negative}\n\n# 投稿文\n\n${caption(d)}`;
+      return `# Obsidianカード\n\n${card(d)}\n\n# 画像生成プロンプト\n\n${activeImagePrompt(d)}\n\n# ネガティブプロンプト\n\n${d.info.negative}\n\n# 投稿文\n\n${caption(d)}`;
     }
 
     function outputFor(tab, d) {
-      if (tab === "prompt") return imagePrompt(d);
+      if (tab === "prompt") return activeImagePrompt(d);
       if (tab === "caption") return caption(d);
       if (tab === "all") return allOutput(d);
       return card(d);
@@ -6112,7 +6170,7 @@ ${text}`;
         aiModel: d.aiModel,
         imagePath: d.imagePath,
         card: card(d),
-        prompt: imagePrompt(d),
+        prompt: activeImagePrompt(d),
         caption: caption(d),
       };
     }
@@ -9839,7 +9897,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         if (missingSubRefs.length) {
           throw new Error(`登場キャラクターの登録画像が見つかりません: ${missingSubRefs.map((ref) => ref.name).join(" / ")}。キャラ別プリセットで画像を登録してから生成してください。`);
         }
-        const prompt = imagePrompt(d);
+        const prompt = activeImagePrompt(d);
         const references = await imageReferencePayload(d);
         const referenceCount = imageReferenceCount(references);
         if (referenceCount) {
@@ -10453,7 +10511,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         theme: d.theme,
         filename: filename || `${d.fileBase}_${sourceLabel}.${extension}`,
         dataUrl: String(dataUrl || ""),
-        prompt: imagePrompt(d),
+        prompt: activeImagePrompt(d),
         model: source,
         size: "",
         quality: "",
@@ -10493,7 +10551,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
           theme: d.theme,
           filename: file.name || `${d.fileBase}_${sourceLabel}.${extension}`,
           dataUrl: String(reader.result || ""),
-          prompt: imagePrompt(d),
+          prompt: activeImagePrompt(d),
           model: source,
           size: "",
           quality: "",
@@ -10985,6 +11043,29 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     $("ideaStockList").addEventListener("change", () => { if ($("madeIdeaStockList")) $("madeIdeaStockList").value = ""; });
     $("madeIdeaStockList").addEventListener("change", () => { $("ideaStockList").value = ""; });
     $("checkIdeaDuplicate").addEventListener("click", () => checkIdeaDuplicate(currentItem("idea"), true));
+    $("evaluateScriptBtn").addEventListener("click", () => evaluateCurrentScript().catch((error) => {
+      console.error(error);
+      $("scriptEvaluationResult").textContent = `AI編集者エラー: ${error.message}`;
+      $("scriptEvaluationResult").className = "image-status-line err";
+    }));
+    $("brushupScriptBtn").addEventListener("click", () => brushupCurrentScript().catch((error) => {
+      console.error(error);
+      $("scriptEvaluationResult").textContent = `ブラッシュアップエラー: ${error.message}`;
+      $("scriptEvaluationResult").className = "image-status-line err";
+    }));
+    $("editorGoImageBtn").addEventListener("click", goToImageGenerationFromEditor);
+    $("evaluateImagePromptBtn").addEventListener("click", () => evaluateCurrentImagePrompt().catch((error) => {
+      console.error(error);
+      $("imagePromptEvaluationResult").textContent = `画像成功率判定エラー: ${error.message}`;
+      $("imagePromptEvaluationResult").className = "image-status-line err";
+    }));
+    $("reviseImagePromptBtn").addEventListener("click", () => reviseCurrentImagePrompt().catch((error) => {
+      console.error(error);
+      $("imagePromptEvaluationResult").textContent = `プロンプト修正エラー: ${error.message}`;
+      $("imagePromptEvaluationResult").className = "image-status-line err";
+    }));
+    $("applyRevisedPromptBtn").addEventListener("click", applyRevisedImagePrompt);
+    $("clearRevisedPromptBtn").addEventListener("click", () => clearEditorPromptOverride(true));
     $("copyIdeaStockMd").addEventListener("click", copySelectedIdeaMd);
     $("sendIdeaStockObsidian").addEventListener("click", sendIdeaToObsidian);
     $("saveReservation").addEventListener("click", saveReservationFromButton);
@@ -11427,6 +11508,393 @@ ${optionalOutput ? optionalOutput + "\n" : ""}  "p1": "1コマ目のセリフや
         }
         throw new Error("AIの返答をJSONとして読めませんでした。もう一度生成してください。");
       }
+    }
+
+    async function callActiveAiJson(prompt) {
+      const provider = currentAiProvider();
+      const apiKey = activeProviderKey(provider);
+      if (!apiKey) {
+        throw new Error(`${AI_PROVIDER_LABELS[provider] || provider}のAPIキーが設定されていません。`);
+      }
+      let raw = "";
+      if (provider === "openai") raw = await callOpenAI(apiKey, prompt);
+      else if (provider === "gemini") raw = await callGemini(apiKey, prompt);
+      else raw = await callClaude(apiKey, prompt);
+      return parseJsonFromAi(raw);
+    }
+
+    function editorCharacterSettings(d = data()) {
+      const names = [d.character, ...(d.subCharacters || [])].filter(Boolean);
+      return names.map((name) => {
+        const info = characterData[name] || {};
+        return {
+          name,
+          personality: info.profileSummary || "",
+          tone: info.speechStyle || "",
+          likes: "",
+          dislikes: "",
+          relationship: name === d.character ? "主人公・今回の中心人物" : `${d.character}との会話相手・登場キャラクター`,
+          ng_behavior: [
+            "説教しすぎない",
+            "キャラクターの核や年齢、関係性を変えない",
+            name === "カーラ・マンソン" ? "観客やステージへの敬意を失わせない" : "",
+            name === "ヴェル13世" ? "完璧な成功者や上から導く存在にしない" : "",
+            name === "べるぼ" ? "強く断定しすぎず、優しい敬語で情報発信する" : ""
+          ].filter(Boolean).join(" / ")
+        };
+      });
+    }
+
+    function editorScriptInput(d = data()) {
+      return {
+        title: d.title || "",
+        target_reader: d.character === "べるぼ"
+          ? "AI創作やUmbrella Parade制作に興味がある人"
+          : "未完成でも進もうとしている人、キャラクターの感情に共感したい人",
+        purpose: d.aim || d.info.defaultAim || "",
+        character_settings: editorCharacterSettings(d),
+        script: {
+          panel_1: d.p1 || "",
+          panel_2: d.p2 || "",
+          panel_3: d.p3 || "",
+          panel_4: d.p4 || ""
+        }
+      };
+    }
+
+    function buildScriptEvaluationPrompt(d = data()) {
+      return `あなたは4コマ漫画専門の編集者です。
+
+目的は、完璧な漫画を作ることではありません。
+画像生成前に、公開してよい水準に達しているかを判定することです。
+
+75点以上なら「公開OK」とし、過剰な修正提案は禁止です。
+60〜74点なら「ブラッシュアップ推奨」とし、改善案を1つに絞ってください。
+59点以下なら「ネタ再生成推奨」とし、根本的な弱点を指摘してください。
+
+評価項目:
+- 導入のわかりやすさ: 20点
+- コマ間の流れ: 25点
+- セリフの短さ: 15点
+- 感情の起伏: 20点
+- オチの納得感: 10点
+- 次回への余韻: 10点
+
+出力は必ず次のJSON形式にしてください。
+{
+  "totalScore": 0,
+  "judgement": "publish_ok | brushup_recommended | regenerate_recommended",
+  "readingScore": 0,
+  "characterAssetScore": 0,
+  "weakestPoint": "",
+  "improvementSuggestion": null,
+  "shouldShowBrushupButton": false,
+  "shouldShowGenerateImageButton": false
+}
+
+評価対象:
+${JSON.stringify(editorScriptInput(d), null, 2)}`;
+    }
+
+    function buildBrushupPrompt(evaluation = lastScriptEvaluation, d = data()) {
+      return `あなたは4コマ漫画専門の編集者です。
+
+編集AIの判定をもとに、4コマ台本を1回だけブラッシュアップしてください。
+
+重要ルール:
+- 元ネタの核は維持する
+- キャラを変えない
+- テーマを変えない
+- 別作品にしない
+- セリフを短くする
+- コマ間の流れを自然にする
+- オチを少しだけ強くする
+- キャラらしさを高める
+- ブラッシュアップは1回で終える前提にする
+
+出力は必ず次のJSON形式にしてください。
+{
+  "revised_script": {
+    "panel_1": "",
+    "panel_2": "",
+    "panel_3": "",
+    "panel_4": ""
+  },
+  "revision_summary": ""
+}
+
+入力:
+${JSON.stringify({
+  original_script: editorScriptInput(d).script,
+  editor_score: Number(evaluation && evaluation.totalScore || 0),
+  weakest_point: evaluation && evaluation.weakestPoint || "",
+  improvement_policy: evaluation && evaluation.improvementSuggestion || "セリフを短くし、4コマの流れとオチを自然にしてください",
+  character_settings: editorCharacterSettings(d),
+  title: d.title,
+  theme: d.theme,
+  aim: d.aim
+}, null, 2)}`;
+    }
+
+    function editorImagePromptInput(d = data()) {
+      return {
+        visual_style: `${d.character}の既存漫画テンプレート。9:16縦型4コマ。雨、ネオン、キャラ別色設計。`,
+        character_reference: [
+          d.referenceImageName ? `メイン参考画像: ${d.referenceImageName}` : "メイン参考画像未選択",
+          d.mangaRefImageName ? `漫画参考画像: ${d.mangaRefImageName}` : "",
+          ...(d.subCharRefs || []).map((ref) => `${ref.name}: ${ref.imageName || "参考画像未選択"}`)
+        ].filter(Boolean).join(" / "),
+        panels: [1, 2, 3, 4].map((panel) => {
+          const speech = d[`p${panel}`] || "";
+          return {
+            panel,
+            scene: speech,
+            characters: [d.character, ...(d.subCharacters || [])].filter(Boolean).join(" / "),
+            expression: "セリフの感情に合わせる",
+            pose: panel === 4 ? "小さな一歩、後ろ姿または中央" : "1コマ1アクション",
+            background: "雨の夜、ネオン街。背景はキャラと吹き出しを邪魔しない",
+            camera: panel === 3 ? "中央寄り" : "スマホで読みやすい中距離",
+            speech,
+            image_prompt: activeImagePrompt(d)
+          };
+        })
+      };
+    }
+
+    function buildImagePromptEvaluationPrompt(d = data()) {
+      return `あなたはAI漫画制作における画像生成プロンプトの検査官です。
+
+目的は、画像生成の成功率を上げ、無駄な再生成コストを減らすことです。
+プロンプトが芸術的に優れているかではなく、画像AIが迷わず生成できるかを評価してください。
+
+75点以上なら「画像生成OK」としてください。
+60〜74点なら「プロンプト修正推奨」としてください。
+59点以下なら「プロンプト再作成推奨」としてください。
+
+評価項目:
+- キャラ再現性: 20点
+- 構図の明確さ: 20点
+- 要素の少なさ: 15点
+- 表情とセリフの一致: 15点
+- 背景のシンプルさ: 10点
+- 4コマ全体の一貫性: 10点
+- 吹き出し余白: 10点
+
+重点的に検出する問題:
+- 1コマにキャラが多すぎる
+- 背景が複雑すぎる
+- 複数の動作を同時に指定している
+- 視点が曖昧である
+- キャラの服装指定が毎回違う
+- 表情指定がない
+- ポーズ指定が曖昧である
+- セリフと表情が合っていない
+- 小物が多すぎる
+- 画像内に文字を描かせようとしている
+- コマごとに画風指定がズレている
+
+出力は必ず次のJSON形式にしてください。
+{
+  "totalScore": 0,
+  "judgement": "image_ok | prompt_fix_recommended | prompt_regenerate_recommended",
+  "riskyPoints": [],
+  "fixSuggestion": null
+}
+
+評価対象:
+${JSON.stringify(editorImagePromptInput(d), null, 2)}`;
+    }
+
+    function buildImagePromptRevisionPrompt(evaluation = lastImagePromptEvaluation, d = data()) {
+      return `あなたはAI漫画制作における画像生成プロンプトの修正担当です。
+
+画像成功率AIの判定をもとに、画像生成プロンプトを1回だけ修正してください。
+無限修正はしません。
+
+修正方針:
+- キャラ情報を固定する
+- 背景を簡単にする
+- 登場人物を減らしすぎず、選択キャラは維持する
+- 1コマ1アクションにする
+- 表情を明確にする
+- カメラ位置を指定する
+- 吹き出し余白を指定する
+- 画風指定を統一する
+- 画像内の文字生成は避け、必要な場合も最小限にする
+
+出力は必ず次のJSON形式にしてください。
+{
+  "revised_image_prompt": "",
+  "negative_prompt": "",
+  "fix_summary": ""
+}
+
+入力:
+${JSON.stringify({
+  current_prompt: activeImagePrompt(d),
+  evaluation,
+  character_settings: editorCharacterSettings(d),
+  script: editorScriptInput(d).script
+}, null, 2)}`;
+    }
+
+    function editorJudgementLabel(value) {
+      const map = {
+        publish_ok: "公開OK / 画像生成へ進む",
+        brushup_recommended: "ブラッシュアップ推奨",
+        regenerate_recommended: "ネタ再生成推奨",
+        image_ok: "画像生成OK",
+        prompt_fix_recommended: "プロンプト修正推奨",
+        prompt_regenerate_recommended: "プロンプト再作成推奨"
+      };
+      return map[value] || value || "-";
+    }
+
+    function editorSetMainButton(id) {
+      ["evaluateScriptBtn", "brushupScriptBtn", "editorGoImageBtn", "evaluateImagePromptBtn", "reviseImagePromptBtn", "applyRevisedPromptBtn"].forEach((buttonId) => {
+        const button = $(buttonId);
+        if (!button) return;
+        button.classList.toggle("generate-ai-btn", buttonId === id);
+        button.classList.toggle("secondary", buttonId !== id);
+      });
+    }
+
+    function renderScriptEvaluation(result) {
+      if (!result) return;
+      const score = Number(result.totalScore || 0);
+      const judgement = result.judgement || (score >= 75 ? "publish_ok" : score >= 60 ? "brushup_recommended" : "regenerate_recommended");
+      if ($("scriptEvaluationResult")) {
+        $("scriptEvaluationResult").textContent = `総合点 ${score}点 / ${editorJudgementLabel(judgement)}`;
+        $("scriptEvaluationResult").className = `image-status-line ${score < 60 ? "err" : ""}`;
+      }
+      if ($("editorNotes")) {
+        const nextAction = score >= 75 ? "画像生成へ進む" : score >= 60 ? "ブラッシュアップする" : "ネタを再生成する";
+        $("editorNotes").value = [
+          `総合点: ${score}点`,
+          `判定: ${editorJudgementLabel(judgement)}`,
+          `読了率スコア: ${result.readingScore ?? "-"}`,
+          `キャラ資産性: ${result.characterAssetScore ?? "-"}`,
+          `一番弱い点: ${result.weakestPoint || "-"}`,
+          result.improvementSuggestion ? `改善案: ${result.improvementSuggestion}` : "",
+          `次に押すべきボタン: ${nextAction}`
+        ].filter(Boolean).join("\n");
+      }
+      editorSetMainButton(score >= 75 ? "editorGoImageBtn" : score >= 60 ? "brushupScriptBtn" : "evaluateScriptBtn");
+    }
+
+    function renderImagePromptEvaluation(result) {
+      if (!result) return;
+      const score = Number(result.totalScore || 0);
+      const judgement = result.judgement || (score >= 75 ? "image_ok" : score >= 60 ? "prompt_fix_recommended" : "prompt_regenerate_recommended");
+      if ($("imagePromptEvaluationResult")) {
+        const risks = Array.isArray(result.riskyPoints) && result.riskyPoints.length ? ` / 注意: ${result.riskyPoints.slice(0, 3).join(" / ")}` : "";
+        $("imagePromptEvaluationResult").textContent = `画像成功率 ${score}点 / ${editorJudgementLabel(judgement)}${risks}`;
+        $("imagePromptEvaluationResult").className = `image-status-line ${score < 60 ? "err" : ""}`;
+      }
+      editorSetMainButton(score >= 75 ? "editorGoImageBtn" : score >= 60 ? "reviseImagePromptBtn" : "evaluateImagePromptBtn");
+    }
+
+    async function withEditorButton(buttonId, workingText, task) {
+      const button = $(buttonId);
+      const old = button ? button.textContent : "";
+      if (button) {
+        button.disabled = true;
+        button.innerHTML = `<span class="spinner"></span>${workingText}`;
+      }
+      try {
+        return await task();
+      } finally {
+        if (button) {
+          button.disabled = false;
+          button.textContent = old;
+        }
+      }
+    }
+
+    async function evaluateCurrentScript() {
+      await withEditorButton("evaluateScriptBtn", "編集中…", async () => {
+        $("scriptEvaluationResult").textContent = "AI編集者が台本を確認しています。";
+        lastScriptEvaluation = await callActiveAiJson(buildScriptEvaluationPrompt());
+        renderScriptEvaluation(lastScriptEvaluation);
+      });
+    }
+
+    async function brushupCurrentScript() {
+      await withEditorButton("brushupScriptBtn", "改善中…", async () => {
+        if (!lastScriptEvaluation) {
+          lastScriptEvaluation = await callActiveAiJson(buildScriptEvaluationPrompt());
+          renderScriptEvaluation(lastScriptEvaluation);
+        }
+        const result = await callActiveAiJson(buildBrushupPrompt(lastScriptEvaluation));
+        const revised = result.revised_script || {};
+        if (revised.panel_1) $("p1").value = revised.panel_1;
+        if (revised.panel_2) $("p2").value = revised.panel_2;
+        if (revised.panel_3) $("p3").value = revised.panel_3;
+        if (revised.panel_4) $("p4").value = revised.panel_4;
+        if ($("editorNotes")) {
+          $("editorNotes").value = `ブラッシュアップ完了\n${result.revision_summary || ""}\n\n次に押すべきボタン: ネタを編集チェック`;
+        }
+        clearEditorPromptOverride(false);
+        saveActiveIdeaDraft();
+        render();
+        $("scriptEvaluationResult").textContent = "改善版の4コマ台本を反映しました。もう一度チェックできます。";
+        editorSetMainButton("evaluateScriptBtn");
+      });
+    }
+
+    function goToImageGenerationFromEditor() {
+      if ($("mangaImageGenBox")) $("mangaImageGenBox").scrollIntoView({ behavior: "smooth", block: "start" });
+      if ($("mangaGenBtn")) $("mangaGenBtn").focus();
+      if ($("imagePromptEvaluationResult") && !lastImagePromptEvaluation) {
+        $("imagePromptEvaluationResult").textContent = "画像生成前に「画像成功率を判定」も使えます。";
+      }
+    }
+
+    async function evaluateCurrentImagePrompt() {
+      await withEditorButton("evaluateImagePromptBtn", "判定中…", async () => {
+        $("imagePromptEvaluationResult").textContent = "画像成功率AIがプロンプトを確認しています。";
+        lastImagePromptEvaluation = await callActiveAiJson(buildImagePromptEvaluationPrompt());
+        renderImagePromptEvaluation(lastImagePromptEvaluation);
+      });
+    }
+
+    async function reviseCurrentImagePrompt() {
+      await withEditorButton("reviseImagePromptBtn", "修正中…", async () => {
+        if (!lastImagePromptEvaluation) {
+          lastImagePromptEvaluation = await callActiveAiJson(buildImagePromptEvaluationPrompt());
+          renderImagePromptEvaluation(lastImagePromptEvaluation);
+        }
+        const result = await callActiveAiJson(buildImagePromptRevisionPrompt(lastImagePromptEvaluation));
+        if ($("editorRevisedImagePrompt")) {
+          $("editorRevisedImagePrompt").value = String(result.revised_image_prompt || "").trim();
+        }
+        $("imagePromptEvaluationResult").textContent = `修正済みプロンプトを作成しました。${result.fix_summary || ""}`;
+        editorSetMainButton("applyRevisedPromptBtn");
+      });
+    }
+
+    function applyRevisedImagePrompt() {
+      const value = $("editorRevisedImagePrompt") ? $("editorRevisedImagePrompt").value.trim() : "";
+      if (!value) {
+        $("imagePromptEvaluationResult").textContent = "適用する修正済みプロンプトがありません。";
+        $("imagePromptEvaluationResult").className = "image-status-line err";
+        return;
+      }
+      editorImagePromptOverride = value;
+      editorImagePromptFingerprint = editorPromptFingerprint();
+      $("imagePromptEvaluationResult").textContent = "修正済みプロンプトを適用しました。プロンプトコピー/API生成に使われます。";
+      render();
+      editorSetMainButton("editorGoImageBtn");
+    }
+
+    function clearEditorPromptOverride(showMessage = true) {
+      editorImagePromptOverride = "";
+      editorImagePromptFingerprint = "";
+      if ($("editorRevisedImagePrompt")) $("editorRevisedImagePrompt").value = "";
+      if (showMessage && $("imagePromptEvaluationResult")) {
+        $("imagePromptEvaluationResult").textContent = "修正済みプロンプトを解除しました。通常プロンプトに戻ります。";
+      }
+      render();
     }
 
     function fallbackIdeaHashtagsFromCurrent() {
