@@ -1127,6 +1127,23 @@
             <label class="tall">AI編集者メモ
               <textarea id="editorNotes" rows="4" readonly placeholder="総合点、判定、一番弱い点、次に押すべきボタンが表示されます。"></textarea>
             </label>
+            <div class="subchar-section" id="brushupComparePanel" style="display:none">
+              <div class="subchar-title">ブラッシュアップ比較</div>
+              <div class="grid cols">
+                <label class="tall">元ネタ
+                  <textarea id="brushupOriginalText" rows="10" readonly></textarea>
+                </label>
+                <label class="tall">ブラッシュアップ後
+                  <textarea id="brushupRevisedText" rows="10" readonly></textarea>
+                </label>
+              </div>
+              <div id="brushupCompareSummary" class="image-status-line"></div>
+              <div class="actions">
+                <button id="acceptBrushupBtn" class="generate-ai-btn" type="button">ブラッシュアップ後を使う</button>
+                <button id="restoreOriginalIdeaBtn" class="secondary" type="button">元ネタに戻す</button>
+                <button id="copyBrushupCompareBtn" class="secondary" type="button">比較をコピー</button>
+              </div>
+            </div>
             <div class="actions">
               <button id="evaluateImagePromptBtn" class="secondary" type="button">画像成功率を判定</button>
               <button id="reviseImagePromptBtn" class="secondary" type="button">プロンプトを1回修正</button>
@@ -1642,6 +1659,7 @@
     let activeSnsSettingsCharacter = "";
     let lastScriptEvaluation = null;
     let lastImagePromptEvaluation = null;
+    let lastBrushupComparison = null;
     let editorImagePromptOverride = "";
     let editorImagePromptFingerprint = "";
 
@@ -11054,6 +11072,13 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       $("scriptEvaluationResult").className = "image-status-line err";
     }));
     $("editorGoImageBtn").addEventListener("click", goToImageGenerationFromEditor);
+    $("acceptBrushupBtn").addEventListener("click", acceptBrushupComparison);
+    $("restoreOriginalIdeaBtn").addEventListener("click", restoreBrushupOriginal);
+    $("copyBrushupCompareBtn").addEventListener("click", () => copyBrushupComparison().catch((error) => {
+      console.error(error);
+      $("brushupCompareSummary").textContent = `比較コピーエラー: ${error.message}`;
+      $("brushupCompareSummary").className = "image-status-line err";
+    }));
     $("evaluateImagePromptBtn").addEventListener("click", () => evaluateCurrentImagePrompt().catch((error) => {
       console.error(error);
       $("imagePromptEvaluationResult").textContent = `画像成功率判定エラー: ${error.message}`;
@@ -11811,6 +11836,100 @@ ${JSON.stringify({
       }
     }
 
+    const EDITOR_IDEA_FIELDS = [
+      ["title", "タイトル"],
+      ["subtitle", "サブコピー"],
+      ["theme", "テーマ"],
+      ["aim", "狙い"],
+      ["p1", "1コマ目"],
+      ["p2", "2コマ目"],
+      ["p3", "3コマ目"],
+      ["p4", "4コマ目"]
+    ];
+
+    function editorIdeaSnapshot() {
+      return EDITOR_IDEA_FIELDS.reduce((snapshot, [id]) => {
+        snapshot[id] = $(id) ? $(id).value : "";
+        return snapshot;
+      }, {});
+    }
+
+    function editorSnapshotText(snapshot = {}) {
+      return EDITOR_IDEA_FIELDS
+        .map(([id, label]) => `${label}\n${snapshot[id] || ""}`)
+        .join("\n\n");
+    }
+
+    function applyEditorIdeaSnapshot(snapshot = {}) {
+      EDITOR_IDEA_FIELDS.forEach(([id]) => {
+        if ($(id) && Object.prototype.hasOwnProperty.call(snapshot, id)) {
+          $(id).value = snapshot[id] || "";
+        }
+      });
+      clearEditorPromptOverride(false);
+      saveActiveIdeaDraft();
+      render();
+    }
+
+    function renderBrushupComparison(comparison = lastBrushupComparison) {
+      const panel = $("brushupComparePanel");
+      if (!panel) return;
+      if (!comparison) {
+        panel.style.display = "none";
+        return;
+      }
+      panel.style.display = "grid";
+      if ($("brushupOriginalText")) $("brushupOriginalText").value = editorSnapshotText(comparison.original);
+      if ($("brushupRevisedText")) $("brushupRevisedText").value = editorSnapshotText(comparison.revised);
+      if ($("brushupCompareSummary")) {
+        $("brushupCompareSummary").textContent = comparison.summary
+          ? `改善メモ: ${comparison.summary}`
+          : "元ネタとブラッシュアップ後を見比べられます。";
+        $("brushupCompareSummary").className = "image-status-line";
+      }
+    }
+
+    function acceptBrushupComparison() {
+      if (!lastBrushupComparison) return;
+      applyEditorIdeaSnapshot(lastBrushupComparison.revised);
+      renderBrushupComparison(lastBrushupComparison);
+      if ($("brushupCompareSummary")) {
+        $("brushupCompareSummary").textContent = "ブラッシュアップ後を採用しました。必要なら元ネタに戻せます。";
+      }
+      editorSetMainButton("evaluateScriptBtn");
+    }
+
+    function restoreBrushupOriginal() {
+      if (!lastBrushupComparison) return;
+      applyEditorIdeaSnapshot(lastBrushupComparison.original);
+      renderBrushupComparison(lastBrushupComparison);
+      lastScriptEvaluation = null;
+      if ($("scriptEvaluationResult")) {
+        $("scriptEvaluationResult").textContent = "元ネタに戻しました。必要ならもう一度チェックできます。";
+        $("scriptEvaluationResult").className = "image-status-line";
+      }
+      if ($("brushupCompareSummary")) {
+        $("brushupCompareSummary").textContent = "元ネタに戻しました。右側にはブラッシュアップ案を残しています。";
+      }
+      editorSetMainButton("evaluateScriptBtn");
+    }
+
+    async function copyBrushupComparison() {
+      if (!lastBrushupComparison) return;
+      await copyText([
+        "## 元ネタ",
+        editorSnapshotText(lastBrushupComparison.original),
+        "",
+        "## ブラッシュアップ後",
+        editorSnapshotText(lastBrushupComparison.revised),
+        lastBrushupComparison.summary ? `\n## 改善メモ\n${lastBrushupComparison.summary}` : ""
+      ].filter(Boolean).join("\n\n"));
+      if ($("brushupCompareSummary")) {
+        $("brushupCompareSummary").textContent = "比較をコピーしました。";
+        $("brushupCompareSummary").className = "image-status-line";
+      }
+    }
+
     async function evaluateCurrentScript() {
       await withEditorButton("evaluateScriptBtn", "編集中…", async () => {
         $("scriptEvaluationResult").textContent = "AI編集者が台本を確認しています。";
@@ -11821,23 +11940,31 @@ ${JSON.stringify({
 
     async function brushupCurrentScript() {
       await withEditorButton("brushupScriptBtn", "改善中…", async () => {
+        const original = editorIdeaSnapshot();
         if (!lastScriptEvaluation) {
           lastScriptEvaluation = await callActiveAiJson(buildScriptEvaluationPrompt());
           renderScriptEvaluation(lastScriptEvaluation);
         }
         const result = await callActiveAiJson(buildBrushupPrompt(lastScriptEvaluation));
         const revised = result.revised_script || {};
-        if (revised.panel_1) $("p1").value = revised.panel_1;
-        if (revised.panel_2) $("p2").value = revised.panel_2;
-        if (revised.panel_3) $("p3").value = revised.panel_3;
-        if (revised.panel_4) $("p4").value = revised.panel_4;
+        const revisedSnapshot = {
+          ...original,
+          p1: revised.panel_1 || original.p1,
+          p2: revised.panel_2 || original.p2,
+          p3: revised.panel_3 || original.p3,
+          p4: revised.panel_4 || original.p4
+        };
+        applyEditorIdeaSnapshot(revisedSnapshot);
+        lastBrushupComparison = {
+          original,
+          revised: revisedSnapshot,
+          summary: result.revision_summary || ""
+        };
+        renderBrushupComparison(lastBrushupComparison);
         if ($("editorNotes")) {
-          $("editorNotes").value = `ブラッシュアップ完了\n${result.revision_summary || ""}\n\n次に押すべきボタン: ネタを編集チェック`;
+          $("editorNotes").value = `ブラッシュアップ完了\n${result.revision_summary || ""}\n\n比較パネルで元ネタと見比べられます。\n次に押すべきボタン: ネタを編集チェック`;
         }
-        clearEditorPromptOverride(false);
-        saveActiveIdeaDraft();
-        render();
-        $("scriptEvaluationResult").textContent = "改善版の4コマ台本を反映しました。もう一度チェックできます。";
+        $("scriptEvaluationResult").textContent = "改善版の4コマ台本を反映しました。元ネタとの比較も確認できます。";
         editorSetMainButton("evaluateScriptBtn");
       });
     }
