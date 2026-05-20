@@ -483,6 +483,10 @@ async function restoreScheduleQueueFromPersistentStore(reason = "startup") {
 }
 
 function isGitHubActionsSchedulerMode() {
+  // RailwayデプロイではローカルスケジューラーでX投稿する（GitHub同期不可のため）
+  if (process.env.RAILWAY_ENVIRONMENT !== undefined || process.env.RAILWAY_PROJECT_ID !== undefined) {
+    return false;
+  }
   return fs.existsSync(GITHUB_WORKFLOWS_DIR);
 }
 
@@ -1181,12 +1185,14 @@ async function tickScheduleQueue() {
         job.post = post;
         job.mediaId = mediaId;
         job.error = "";
+        job.imageDataUrl = "";
         log("SCHEDULE_POST_DONE", { id: job.id, postId: post.id, url: post.url });
       } catch (error) {
         job.status = "failed";
         job.failedAt = new Date().toISOString();
         job.error = friendlyXErrorMessage(error.message || String(error));
         job.errorDetail = error.body || null;
+        job.imageDataUrl = "";
         rememberError(error, { route: "schedule", scheduleId: job.id });
       }
       changed = true;
