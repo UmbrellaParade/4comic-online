@@ -3054,6 +3054,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && requestUrl.pathname === "/sync-key-status") {
+    sendJson(res, 200, { ok: true, configured: !!clientStateSyncKey() });
+    return;
+  }
+
   if (req.method === "GET" && requestUrl.pathname === "/client-state") {
     try {
       await handleGetClientState(req, res, requestUrl);

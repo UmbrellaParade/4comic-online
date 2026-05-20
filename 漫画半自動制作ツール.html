@@ -887,6 +887,23 @@
     <button id="saveCloudSync" class="secondary" type="button">クラウドへ保存</button>
     <button id="loadCloudSync" class="secondary" type="button">クラウドから読込</button>
     <span id="apiStatus" class="api-status"></span>
+    <details id="mobileSetupGuide" style="margin-top:10px;border:1px solid #ccc;border-radius:6px;padding:8px 12px;background:#f9f9f9;">
+      <summary style="cursor:pointer;font-weight:bold;">📱 スマホ・別端末で使う方法</summary>
+      <div style="margin-top:8px;font-size:0.9em;line-height:1.7;">
+        <div id="syncKeyServerStatus" style="margin-bottom:6px;"></div>
+        <b>【ネタ・キャラ画像の同期】</b><br>
+        自動で同期されます。スマホでURLを開けばOKです。<br>
+        （同期されていない場合はPCで「クラウドへ保存」をクリック）<br><br>
+        <b>【APIキーの同期（要設定）】</b><br>
+        APIキーを同期するには2つの設定が必要です：<br>
+        <ol style="margin:4px 0 4px 16px;">
+          <li>Railwayの Variables に <code>CLIENT_STATE_SYNC_KEY=好きなパスワード</code> を追加</li>
+          <li>このページの「クラウド同期キー」欄に同じパスワードを入力して「クラウドへ保存」</li>
+          <li>スマホでURLを開いて同じパスワードを入力し「クラウドから読込」</li>
+        </ol>
+        <span id="syncKeyBrowserStatus"></span>
+      </div>
+    </details>
   </div>
 
   <nav class="side-toc" aria-label="ツール目次">
@@ -5789,6 +5806,7 @@ ${text}`;
         const result = await pushCloudStateToServer();
         const privateNote = result.skippedPrivate ? " / API・WordPress・X秘密情報は同期キーを入れると同期できます" : "";
         const errorNote = result.errors.length ? ` / 注意: ${result.errors[0]}` : "";
+        localStorage.setItem(LAST_CLOUD_PUSH_KEY, new Date().toISOString());
         setCloudSyncStatus(`クラウドへ保存しました（${result.saved}件）${privateNote}${errorNote}`, result.errors.length ? "" : "ok");
       } catch (error) {
         console.error(error);
@@ -12382,6 +12400,49 @@ ${JSON.stringify({
     $("manualGenerateIdea").addEventListener("click", () => autoGenerate({ manualMode: true }));
     $("reGenerate").addEventListener("click", autoGenerate);
 
+    const LAST_CLOUD_PUSH_KEY = "umbrellaMangaLastCloudPushAt";
+
+    async function checkSyncKeyServerStatus() {
+      if (!onlineStateAvailable()) return;
+      try {
+        const res = await fetch(`${scheduleServerUrl()}/sync-key-status`);
+        const json = await res.json().catch(() => ({}));
+        const el = $("syncKeyServerStatus");
+        const browserEl = $("syncKeyBrowserStatus");
+        if (!el) return;
+        if (json.configured) {
+          el.innerHTML = `<span style="color:green">✅ サーバーの同期キーは設定済みです</span>`;
+          if (browserEl) {
+            browserEl.innerHTML = cloudSyncKeyValue()
+              ? `<span style="color:green">✅ このブラウザの同期キーも入力済み — APIキーの同期ができます</span>`
+              : `<span style="color:orange">⚠️ このブラウザの「クラウド同期キー」欄にパスワードを入力してください</span>`;
+          }
+        } else {
+          el.innerHTML = `<span style="color:orange">⚠️ サーバーの同期キー未設定（Railway Variables に <code>CLIENT_STATE_SYNC_KEY</code> を追加するとAPIキーも同期できます）</span>`;
+          if (browserEl) browserEl.innerHTML = "";
+        }
+      } catch (e) {
+        console.warn("sync-key-status check failed", e);
+      }
+    }
+
+    async function autoInitialCloudPush() {
+      if (!onlineStateAvailable()) return;
+      const lastPush = localStorage.getItem(LAST_CLOUD_PUSH_KEY);
+      const hasLocalData = cloudPublicStateKeys().some(k => localStorage.getItem(k) !== null);
+      if (!hasLocalData) return;
+      // 一度もプッシュしたことがなければ公開データを自動プッシュ（初回のみ）
+      if (!lastPush) {
+        for (const key of cloudPublicStateKeys()) {
+          const { exists, value } = localStorageValueForCloud(key);
+          if (!exists) continue;
+          await saveServerClientState(key, value).catch(() => {});
+        }
+        localStorage.setItem(LAST_CLOUD_PUSH_KEY, new Date().toISOString());
+        console.log("初回クラウド同期（公開データ）完了");
+      }
+    }
+
     async function initializeTool() {
       loadCloudSyncKey();
       await restoreCloudStateFromServer({ overwrite: false });
@@ -12436,6 +12497,8 @@ ${JSON.stringify({
       renderKeptImages();
       await restoreDisplayedGeneratedImage();
       render();
+      autoInitialCloudPush().catch(() => {});
+      checkSyncKeyServerStatus().catch(() => {});
     }
 
     initializeTool();
