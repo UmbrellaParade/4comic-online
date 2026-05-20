@@ -94,6 +94,24 @@
       background: var(--panel-soft);
       color: var(--ink);
     }
+    .cloud-save-all {
+      position: fixed;
+      right: 18px;
+      bottom: 70px;
+      z-index: 25;
+      min-width: 56px;
+      height: 44px;
+      border-radius: 999px;
+      border: 1px solid rgba(80, 160, 255, .5);
+      background: rgba(255, 255, 255, .94);
+      color: var(--ink);
+      box-shadow: 0 12px 28px rgba(31, 36, 54, .18);
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .cloud-save-all:hover { border-color: rgba(80, 160, 255, .9); transform: translateY(-1px); }
+    .cloud-save-all.saving { opacity: .6; cursor: wait; }
     .back-to-top {
       position: fixed;
       right: 18px;
@@ -917,6 +935,7 @@
     <a href="#snsReservationPanel">SNS予約投稿</a>
     <a href="#section-output">出力</a>
   </nav>
+  <button id="cloudSaveAll" class="cloud-save-all" type="button" title="全データをクラウドへ保存">☁️保存</button>
   <button id="backToTop" class="back-to-top" type="button" title="TOPに戻る">TOP</button>
 
   <main>
@@ -11592,6 +11611,23 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     });
     $("saveCloudSync").addEventListener("click", saveCurrentStateToCloud);
     $("loadCloudSync").addEventListener("click", loadCurrentStateFromCloud);
+    if ($("cloudSaveAll")) {
+      $("cloudSaveAll").addEventListener("click", async () => {
+        const btn = $("cloudSaveAll");
+        btn.classList.add("saving");
+        btn.textContent = "☁️…";
+        try {
+          await saveCurrentStateToCloud();
+          btn.textContent = "☁️✓";
+          setTimeout(() => { btn.textContent = "☁️保存"; }, 2000);
+        } catch {
+          btn.textContent = "☁️✗";
+          setTimeout(() => { btn.textContent = "☁️保存"; }, 2000);
+        } finally {
+          btn.classList.remove("saving");
+        }
+      });
+    }
     $("cloudSyncKey").addEventListener("change", saveCloudSyncKey);
 
     document.querySelectorAll(".ai-provider-check").forEach((check) => {
