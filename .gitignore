@@ -13,8 +13,12 @@ data/*.log
 # Local-only settings
 manga-import-directories.json
 data/manga-import-directories.json
+client-state.json
+data/client-state.json
 
 # Online runtime data
+x-scheduled-posts.json
+runtime-images.json
 data/x-scheduled-posts.json
 data/runtime-images.json
 data/runtime-images/

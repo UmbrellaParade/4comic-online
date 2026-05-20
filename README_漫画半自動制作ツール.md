@@ -464,3 +464,20 @@ X User Access Token欄には、OAuth 2.0の `access_token` 文字列だけを入
 - API Key、Client ID、Client Secret、Refresh Token、説明文は入れません。
 - App only Access Token / Bearer Tokenではなく、OAuth 2.0 User Contextの `access_token` を使います。
 - 日本語や全角文字が混ざっている場合は保存前にエラーになります。
+
+## スマホ・PC間のクラウド同期
+
+オンライン版では、ヘッダーの `クラウドへ保存` / `クラウドから読込` で、PCとスマホの状態をRailway側へ同期できます。
+
+同期対象:
+- ネタ台本ストック、作成済みネタ、過去ネタ取り込み履歴
+- 予約投稿リスト、キャラクター別の予定日・予定時間
+- キャラクター画像セット、画像パターン、登場キャラクター選択
+- SNS投稿文・ハッシュタグ設定、画像保存名設定
+- AIプロバイダーとモデル選択
+
+APIキー、WordPress Application Password、X OAuth Client Secretなどの秘密情報も同期したい場合は、Railway Variablesに `CLIENT_STATE_SYNC_KEY` を設定します。
+そのうえで、ツール側の `クラウド同期キー` に同じ文字列を入れて `クラウドへ保存` を押します。
+スマホ側では同じ `クラウド同期キー` を入れて `クラウドから読込` を押すと、秘密情報も復元できます。
+
+`CLIENT_STATE_SYNC_KEY` を設定していない場合でも、ネタ台本や画像セットなどの通常データは同期できます。

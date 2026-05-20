@@ -141,7 +141,7 @@ function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Authorization",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Umbrella-Sync-Key",
     "Access-Control-Max-Age": "86400"
   };
 }
@@ -1615,8 +1615,45 @@ function writeRuntimeImages(images) {
 }
 
 function clientStateAllowedKey(key) {
-  return /^umbrellaManga(ImageSet|ImagePatterns|SelectedImagePattern)_/.test(String(key || ""))
-    || /^umbrellaMangaScheduled(Date|Time)ByCharacter$/.test(String(key || ""));
+  const value = String(key || "");
+  return /^umbrellaManga(ImageSet|ImagePatterns|SelectedImagePattern)_/.test(value)
+    || /^umbrellaMangaSubCharacterSelection_/.test(value)
+    || /^umbrellaMangaSnsTextSettings_/.test(value)
+    || /^umbrellaMangaScheduled(Date|Time)ByCharacter$/.test(value)
+    || /^umbrellaManga(ImageDownloadName|ImageDownloadFolder)ByCharacter$/.test(value)
+    || /^umbrellaManga(IdeaStock|Reservations|SeedIdeaStockImportedIds|ActiveIdeaId|ActiveCharacter|CurrentAiProvider|LastScheduledTime)$/.test(value)
+    || /^aiModel_(openai|gemini|claude)$/.test(value)
+    || /^customModel_(openai|gemini|claude)$/.test(value)
+    || /^apiKey_(openai|gemini|claude)$/.test(value)
+    || /^umbrellaMangaWp(SettingsByCharacter|SelectedCharacter)$/.test(value)
+    || /^umbrellaMangaXOAuth(ClientId|ClientSecret)(ByCharacter_.+)?$/.test(value);
+}
+
+function privateClientStateKey(key) {
+  const value = String(key || "");
+  return /^apiKey_(openai|gemini|claude)$/.test(value)
+    || /^umbrellaMangaWpSettingsByCharacter$/.test(value)
+    || /^umbrellaMangaXOAuth(ClientId|ClientSecret)(ByCharacter_.+)?$/.test(value);
+}
+
+function clientStateSyncKey() {
+  return envValue("CLIENT_STATE_SYNC_KEY", "CLIENT_SYNC_KEY", "UMBRELLA_CLIENT_SYNC_KEY");
+}
+
+function ensureClientStateAccess(req, key) {
+  if (!privateClientStateKey(key)) return;
+  const expected = clientStateSyncKey();
+  if (!expected) {
+    const error = new Error("秘密情報のクラウド同期にはRailway VariablesのCLIENT_STATE_SYNC_KEYが必要です。");
+    error.status = 403;
+    throw error;
+  }
+  const received = String(req.headers["x-umbrella-sync-key"] || "").trim();
+  if (received !== expected) {
+    const error = new Error("クラウド同期キーが違うか未入力です。");
+    error.status = 403;
+    throw error;
+  }
 }
 
 function readClientState() {
@@ -1637,6 +1674,7 @@ function clientStateValue(entry) {
 async function handleGetClientState(req, res, requestUrl) {
   const key = String(requestUrl.searchParams.get("key") || "").trim();
   if (!clientStateAllowedKey(key)) throw new Error("この設定キーはオンライン保存できません。");
+  ensureClientStateAccess(req, key);
   const state = readClientState();
   const has = Object.prototype.hasOwnProperty.call(state, key);
   sendJson(res, 200, { ok: true, key, has, value: has ? clientStateValue(state[key]) : null });
@@ -1646,6 +1684,7 @@ async function handleSaveClientState(req, res) {
   const payload = JSON.parse(await readBody(req) || "{}");
   const key = String(payload.key || "").trim();
   if (!clientStateAllowedKey(key)) throw new Error("この設定キーはオンライン保存できません。");
+  ensureClientStateAccess(req, key);
   const state = readClientState();
   if (payload.delete === true) {
     delete state[key];

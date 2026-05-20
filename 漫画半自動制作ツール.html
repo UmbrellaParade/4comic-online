@@ -881,6 +881,11 @@
     </span>
     <input type="password" id="apiKey" class="legacy-api-key" autocomplete="off">
     <button id="saveApiKey" class="secondary" type="button">API設定を保存</button>
+    <label>クラウド同期キー
+      <input type="password" id="cloudSyncKey" class="wide-input" placeholder="秘密情報同期用">
+    </label>
+    <button id="saveCloudSync" class="secondary" type="button">クラウドへ保存</button>
+    <button id="loadCloudSync" class="secondary" type="button">クラウドから読込</button>
     <span id="apiStatus" class="api-status"></span>
   </div>
 
@@ -4088,15 +4093,44 @@
     }
 
     function serverStateAllowedKey(key) {
-      return /^umbrellaManga(ImageSet|ImagePatterns|SelectedImagePattern)_/.test(String(key || ""))
-        || /^umbrellaMangaScheduled(Date|Time)ByCharacter$/.test(String(key || ""));
+      const value = String(key || "");
+      return /^umbrellaManga(ImageSet|ImagePatterns|SelectedImagePattern)_/.test(value)
+        || /^umbrellaMangaSubCharacterSelection_/.test(value)
+        || /^umbrellaMangaSnsTextSettings_/.test(value)
+        || /^umbrellaMangaScheduled(Date|Time)ByCharacter$/.test(value)
+        || /^umbrellaManga(ImageDownloadName|ImageDownloadFolder)ByCharacter$/.test(value)
+        || /^umbrellaManga(IdeaStock|Reservations|SeedIdeaStockImportedIds|ActiveIdeaId|ActiveCharacter|CurrentAiProvider|LastScheduledTime)$/.test(value)
+        || /^aiModel_(openai|gemini|claude)$/.test(value)
+        || /^customModel_(openai|gemini|claude)$/.test(value)
+        || /^apiKey_(openai|gemini|claude)$/.test(value)
+        || /^umbrellaMangaWp(SettingsByCharacter|SelectedCharacter)$/.test(value)
+        || /^umbrellaMangaXOAuth(ClientId|ClientSecret)(ByCharacter_.+)?$/.test(value);
+    }
+
+    function serverStatePrivateKey(key) {
+      const value = String(key || "");
+      return /^apiKey_(openai|gemini|claude)$/.test(value)
+        || /^umbrellaMangaWpSettingsByCharacter$/.test(value)
+        || /^umbrellaMangaXOAuth(ClientId|ClientSecret)(ByCharacter_.+)?$/.test(value);
+    }
+
+    function cloudSyncKeyValue() {
+      return ($("cloudSyncKey")?.value || localStorage.getItem(CLOUD_SYNC_KEY) || "").trim();
+    }
+
+    function cloudSyncHeaders(key = "") {
+      const headers = { "Content-Type": "application/json" };
+      const syncKey = cloudSyncKeyValue();
+      if (syncKey && (!key || serverStatePrivateKey(key))) headers["X-Umbrella-Sync-Key"] = syncKey;
+      return headers;
     }
 
     async function saveServerClientState(key, value) {
       if (!onlineStateAvailable() || !serverStateAllowedKey(key)) return false;
+      if (serverStatePrivateKey(key) && !cloudSyncKeyValue()) return false;
       const response = await fetch(`${scheduleServerUrl()}/client-state`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: cloudSyncHeaders(key),
         body: JSON.stringify({ key, value })
       });
       const json = await response.json().catch(() => ({}));
@@ -4106,7 +4140,11 @@
 
     async function readServerClientState(key) {
       if (!onlineStateAvailable() || !serverStateAllowedKey(key)) return null;
-      const response = await fetch(`${scheduleServerUrl()}/client-state?key=${encodeURIComponent(key)}`, { method: "GET" });
+      if (serverStatePrivateKey(key) && !cloudSyncKeyValue()) return null;
+      const response = await fetch(`${scheduleServerUrl()}/client-state?key=${encodeURIComponent(key)}`, {
+        method: "GET",
+        headers: cloudSyncHeaders(key)
+      });
       const json = await response.json().catch(() => ({}));
       if (!response.ok || !json.ok) throw new Error(json.error || `HTTP ${response.status}`);
       return json.has ? json.value : null;
@@ -4457,6 +4495,7 @@
     function saveSubCharacterSelection(character = val("character"), list = selectedSubCharacterNames()) {
       const normalized = normalizeSubCharacterSelection(list, character);
       localStorage.setItem(subCharacterSelectionKey(character), JSON.stringify(normalized));
+      syncServerClientState(subCharacterSelectionKey(character), normalized);
       return normalized;
     }
 
@@ -4471,6 +4510,7 @@
 
     function clearSubCharacterSelection(character = val("character")) {
       localStorage.setItem(subCharacterSelectionKey(character), JSON.stringify([]));
+      syncServerClientState(subCharacterSelectionKey(character), []);
       if ((val("character") || "ヴェル13世") === (character || "ヴェル13世")) {
         return applySubCharacterSelection([], character, false);
       }
@@ -4759,7 +4799,9 @@
 
     function saveSnsTextSettings(character = activeSnsSettingsCharacter || val("character") || "ヴェル13世") {
       if (!$("fixedHashtags")) return;
-      localStorage.setItem(snsTextSettingsKey(character), JSON.stringify(currentSnsTextSettings()));
+      const settings = currentSnsTextSettings();
+      localStorage.setItem(snsTextSettingsKey(character), JSON.stringify(settings));
+      syncServerClientState(snsTextSettingsKey(character), settings);
     }
 
     function loadSnsTextSettings(character = val("character") || "ヴェル13世") {
@@ -5502,6 +5544,8 @@ ${text}`;
       const provider = val("aiProvider") || "openai";
       localStorage.setItem(`aiModel_${provider}`, val("aiModel"));
       localStorage.setItem(`customModel_${provider}`, val("customModel"));
+      syncServerClientState(`aiModel_${provider}`, val("aiModel"));
+      syncServerClientState(`customModel_${provider}`, val("customModel"));
     }
 
     // ── Stock and Obsidian helpers ───────────────────────────────
@@ -5532,6 +5576,7 @@ ${text}`;
     const X_OAUTH_CLIENT_SECRET_KEY_PREFIX = "umbrellaMangaXOAuthClientSecretByCharacter";
     const X_OAUTH_STATE_KEY = "umbrellaMangaXOAuthState";
     const X_OAUTH_SCOPES = "tweet.read tweet.write users.read media.write offline.access";
+    const CLOUD_SYNC_KEY = "umbrellaMangaCloudSyncKey";
     const WP_SITE_URL_KEY = "umbrellaMangaWpSiteUrl";
     const WP_USERNAME_KEY = "umbrellaMangaWpUsername";
     const WP_APP_PASSWORD_KEY = "umbrellaMangaWpApplicationPassword";
@@ -5578,6 +5623,193 @@ ${text}`;
     let activeWordPressSettingsCharacter = "";
     let latestXScheduleJobs = [];
 
+    function cloudSyncCharacters() {
+      return Object.keys(characterData);
+    }
+
+    function cloudPublicStateKeys() {
+      const characters = cloudSyncCharacters();
+      return [
+        STOCK_KEY,
+        SEED_IDEA_STOCK_IMPORTED_KEY,
+        ACTIVE_MANGA_IDEA_KEY,
+        ACTIVE_CHARACTER_KEY,
+        RESERVATION_KEY,
+        LAST_TIME_KEY,
+        SCHEDULE_DATE_BY_CHARACTER_KEY,
+        SCHEDULE_TIME_BY_CHARACTER_KEY,
+        IMAGE_DOWNLOAD_FOLDER_BY_CHARACTER_KEY,
+        IMAGE_DOWNLOAD_NAME_BY_CHARACTER_KEY,
+        AI_PROVIDER_KEY,
+        WP_SELECTED_CHARACTER_KEY,
+        ...AI_PROVIDERS.flatMap((provider) => [`aiModel_${provider}`, `customModel_${provider}`]),
+        ...characters.flatMap((character) => [
+          imageSetKey(character),
+          imagePatternKey(character),
+          selectedImagePatternKey(character),
+          subCharacterSelectionKey(character),
+          snsTextSettingsKey(character)
+        ])
+      ].filter((key) => key && serverStateAllowedKey(key));
+    }
+
+    function cloudPrivateStateKeys() {
+      const characters = cloudSyncCharacters();
+      return [
+        ...AI_PROVIDERS.map((provider) => `apiKey_${provider}`),
+        WP_SETTINGS_BY_CHARACTER_KEY,
+        ...characters.flatMap((character) => [
+          xOAuthClientIdKey(character),
+          xOAuthClientSecretKey(character)
+        ])
+      ].filter((key) => key && serverStateAllowedKey(key));
+    }
+
+    function localStorageValueForCloud(key) {
+      const raw = localStorage.getItem(key);
+      if (raw === null) return { exists: false, value: null };
+      const trimmed = raw.trim();
+      if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+        try {
+          return { exists: true, value: JSON.parse(raw) };
+        } catch {
+          return { exists: true, value: raw };
+        }
+      }
+      return { exists: true, value: raw };
+    }
+
+    function storeCloudValue(key, value, overwrite = false) {
+      if (!serverStateAllowedKey(key) || value === undefined || value === null) return false;
+      if (!overwrite && localStorage.getItem(key) !== null) return false;
+      localStorage.setItem(key, typeof value === "string" ? value : JSON.stringify(value));
+      return true;
+    }
+
+    function loadCloudSyncKey() {
+      if ($("cloudSyncKey")) $("cloudSyncKey").value = localStorage.getItem(CLOUD_SYNC_KEY) || "";
+    }
+
+    function saveCloudSyncKey() {
+      const key = ($("cloudSyncKey")?.value || "").trim();
+      if (key) localStorage.setItem(CLOUD_SYNC_KEY, key);
+      else localStorage.removeItem(CLOUD_SYNC_KEY);
+      return key;
+    }
+
+    function refreshUiAfterCloudState() {
+      loadApiKeys();
+      refreshModelOptions();
+      const character = restoreActiveCharacterSelection(storedActiveCharacter() || val("character") || "ヴェル13世");
+      activeScheduleCharacter = character;
+      restoreScheduledDateForCharacter(character, val("scheduled") || today());
+      restoreScheduledTimeForCharacter(character, val("scheduledTime") || localStorage.getItem(LAST_TIME_KEY) || "20:00");
+      loadSnsTextSettings(character);
+      loadXOAuthSettings(character);
+      loadWordPressSettings(localStorage.getItem(WP_SELECTED_CHARACTER_KEY) || character);
+      loadImageDownloadNameConfig(character);
+      loadImageDownloadFolder(character);
+      renderIdeaStock();
+      renderReservations();
+      renderImagePatternSelect();
+      updateRuntimeImageStatus();
+      updateProfilePanel();
+      render();
+    }
+
+    async function restoreCloudStateFromServer(options = {}) {
+      if (!onlineStateAvailable()) return { restored: 0, skippedPrivate: 0, errors: [] };
+      const overwrite = !!options.overwrite;
+      const includePrivate = !!cloudSyncKeyValue();
+      const keys = [...new Set([
+        ...cloudPublicStateKeys(),
+        ...(includePrivate ? cloudPrivateStateKeys() : [])
+      ])];
+      let restored = 0;
+      const errors = [];
+      for (const key of keys) {
+        try {
+          const value = await readServerClientState(key);
+          if (value === null || value === undefined) continue;
+          if (storeCloudValue(key, value, overwrite)) restored += 1;
+        } catch (error) {
+          if (serverStatePrivateKey(key)) {
+            errors.push(error.message || String(error));
+            break;
+          }
+          console.warn("クラウド設定の読込に失敗しました。", key, error);
+        }
+      }
+      return { restored, skippedPrivate: includePrivate ? 0 : cloudPrivateStateKeys().length, errors };
+    }
+
+    async function pushCloudStateToServer(options = {}) {
+      if (!onlineStateAvailable()) throw new Error("クラウド同期に使える投稿サーバーURLがありません。");
+      saveCloudSyncKey();
+      const includePrivate = !!cloudSyncKeyValue();
+      const keys = [...new Set([
+        ...cloudPublicStateKeys(),
+        ...(includePrivate ? cloudPrivateStateKeys() : [])
+      ])];
+      let saved = 0;
+      const errors = [];
+      for (const key of keys) {
+        const { exists, value } = localStorageValueForCloud(key);
+        if (!exists) continue;
+        try {
+          await saveServerClientState(key, value);
+          saved += 1;
+        } catch (error) {
+          if (serverStatePrivateKey(key)) {
+            errors.push(error.message || String(error));
+            if (!options.continueOnPrivateError) break;
+          } else {
+            console.warn("クラウド設定の保存に失敗しました。", key, error);
+          }
+        }
+      }
+      return { saved, skippedPrivate: includePrivate ? 0 : cloudPrivateStateKeys().length, errors };
+    }
+
+    function setCloudSyncStatus(message, kind = "") {
+      if ($("apiStatus")) {
+        $("apiStatus").textContent = message;
+        $("apiStatus").className = `api-status ${kind}`.trim();
+      }
+    }
+
+    async function saveCurrentStateToCloud() {
+      try {
+        saveApiKeys({ quiet: true });
+        saveModelChoice();
+        saveSnsTextSettings(activeSnsSettingsCharacter || activeCharacter());
+        saveXOAuthSettings(false, activeXOAuthSettingsCharacter || activeCharacter());
+        if (activeWordPressSettingsCharacter) autosaveWordPressSettings(activeWordPressSettingsCharacter);
+        saveImageDownloadNameConfig(activeCharacter());
+        const result = await pushCloudStateToServer();
+        const privateNote = result.skippedPrivate ? " / API・WordPress・X秘密情報は同期キーを入れると同期できます" : "";
+        const errorNote = result.errors.length ? ` / 注意: ${result.errors[0]}` : "";
+        setCloudSyncStatus(`クラウドへ保存しました（${result.saved}件）${privateNote}${errorNote}`, result.errors.length ? "" : "ok");
+      } catch (error) {
+        console.error(error);
+        setCloudSyncStatus(`クラウド保存エラー: ${error.message}`, "err");
+      }
+    }
+
+    async function loadCurrentStateFromCloud() {
+      try {
+        saveCloudSyncKey();
+        const result = await restoreCloudStateFromServer({ overwrite: true });
+        refreshUiAfterCloudState();
+        const privateNote = result.skippedPrivate ? " / API・WordPress・X秘密情報は同期キーを入れると読込できます" : "";
+        const errorNote = result.errors.length ? ` / 注意: ${result.errors[0]}` : "";
+        setCloudSyncStatus(`クラウドから読み込みました（${result.restored}件）${privateNote}${errorNote}`, result.errors.length ? "" : "ok");
+      } catch (error) {
+        console.error(error);
+        setCloudSyncStatus(`クラウド読込エラー: ${error.message}`, "err");
+      }
+    }
+
     function activeCharacter() {
       return val("character") || "ヴェル13世";
     }
@@ -5595,7 +5827,10 @@ ${text}`;
     function setActiveCharacter(character, persist = true) {
       const target = normalizeCharacterName(character);
       if ($("character")) $("character").value = target;
-      if (persist) localStorage.setItem(ACTIVE_CHARACTER_KEY, target);
+      if (persist) {
+        localStorage.setItem(ACTIVE_CHARACTER_KEY, target);
+        syncServerClientState(ACTIVE_CHARACTER_KEY, target);
+      }
       return target;
     }
 
@@ -5667,6 +5902,7 @@ ${text}`;
 
     function writeList(key, list) {
       localStorage.setItem(key, JSON.stringify(Array.isArray(list) ? list : []));
+      if (serverStateAllowedKey(key)) syncServerClientState(key, Array.isArray(list) ? list : []);
     }
 
     function seedIdeaKey(item) {
@@ -5809,6 +6045,7 @@ ${text}`;
 
     function writeImageDownloadFolders(map) {
       localStorage.setItem(IMAGE_DOWNLOAD_FOLDER_BY_CHARACTER_KEY, JSON.stringify(map || {}));
+      syncServerClientState(IMAGE_DOWNLOAD_FOLDER_BY_CHARACTER_KEY, map || {});
     }
 
     function readImageDownloadNameMap() {
@@ -5823,6 +6060,7 @@ ${text}`;
 
     function writeImageDownloadNameMap(map) {
       localStorage.setItem(IMAGE_DOWNLOAD_NAME_BY_CHARACTER_KEY, JSON.stringify(map || {}));
+      syncServerClientState(IMAGE_DOWNLOAD_NAME_BY_CHARACTER_KEY, map || {});
     }
 
     function loadImageDownloadNameConfig(character = activeCharacter()) {
@@ -6065,6 +6303,7 @@ ${text}`;
       map[targetCharacter] = normalized;
       writeCharacterScheduleTimes(map);
       localStorage.setItem(LAST_TIME_KEY, normalized);
+      syncServerClientState(LAST_TIME_KEY, normalized);
     }
 
     function savedScheduledTimeForCharacter(character = val("character")) {
@@ -7379,6 +7618,8 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       else localStorage.removeItem(xOAuthClientIdKey(targetCharacter));
       if (clientSecret) localStorage.setItem(xOAuthClientSecretKey(targetCharacter), clientSecret);
       else localStorage.removeItem(xOAuthClientSecretKey(targetCharacter));
+      syncServerClientState(xOAuthClientIdKey(targetCharacter), clientId || "");
+      syncServerClientState(xOAuthClientSecretKey(targetCharacter), clientSecret || "");
       localStorage.removeItem(X_OAUTH_CLIENT_ID_KEY);
       localStorage.removeItem(X_OAUTH_CLIENT_SECRET_KEY);
       updateXOAuthRedirectUri();
@@ -8010,6 +8251,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
 
     function writeWordPressSettingsByCharacter(settings) {
       localStorage.setItem(WP_SETTINGS_BY_CHARACTER_KEY, JSON.stringify(settings || {}));
+      syncServerClientState(WP_SETTINGS_BY_CHARACTER_KEY, settings || {});
     }
 
     function legacyWordPressSettings(character = val("character")) {
@@ -8143,6 +8385,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       }
       select.value = target;
       localStorage.setItem(WP_SELECTED_CHARACTER_KEY, target);
+      syncServerClientState(WP_SELECTED_CHARACTER_KEY, target);
       activeWordPressSettingsCharacter = target;
     }
 
@@ -11249,6 +11492,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         if (check) check.checked = item === safeProvider;
       });
       localStorage.setItem(AI_PROVIDER_KEY, safeProvider);
+      syncServerClientState(AI_PROVIDER_KEY, safeProvider);
       $("apiKey").value = activeProviderKey(safeProvider);
     }
 
@@ -11286,9 +11530,11 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         const key = providerKeyFromForm(provider);
         if (key) {
           localStorage.setItem(`apiKey_${provider}`, key);
+          syncServerClientState(`apiKey_${provider}`, key);
           savedCount += 1;
         } else {
           localStorage.removeItem(`apiKey_${provider}`);
+          syncServerClientState(`apiKey_${provider}`, "");
         }
       });
       syncApiProviderChecks(currentAiProvider());
@@ -11321,6 +11567,9 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     $("saveApiKey").addEventListener("click", () => {
       saveApiKeys();
     });
+    $("saveCloudSync").addEventListener("click", saveCurrentStateToCloud);
+    $("loadCloudSync").addEventListener("click", loadCurrentStateFromCloud);
+    $("cloudSyncKey").addEventListener("change", saveCloudSyncKey);
 
     document.querySelectorAll(".ai-provider-check").forEach((check) => {
       check.addEventListener("change", () => {
@@ -12134,6 +12383,8 @@ ${JSON.stringify({
     $("reGenerate").addEventListener("click", autoGenerate);
 
     async function initializeTool() {
+      loadCloudSyncKey();
+      await restoreCloudStateFromServer({ overwrite: false });
       loadApiKeys();
       refreshModelOptions();
       const startupStoredCharacter = storedActiveCharacter();
