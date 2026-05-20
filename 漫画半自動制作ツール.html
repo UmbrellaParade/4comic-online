@@ -8260,7 +8260,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       return json;
     }
 
-    async function postReservationToWordPress(item, image = null, scheduledAt = null, silent = false) {
+    async function postReservationToWordPress(item, image = null, scheduledAt = null, silent = false, options = {}) {
       if (!item) throw new Error("WordPress投稿する予約を選んでください。");
       const targetCharacter = wordpressTargetCharacter(item.character);
       const wpSettings = wordpressSettingsForUse(targetCharacter);
@@ -8270,7 +8270,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       }
       const updatingExistingPost = !!item.wpPostId;
       const episode = wordpressEpisodeNumber(item, wpSettings);
-      const postMode = wordpressPostStatus(targetCharacter, wpSettings);
+      const postMode = options.postMode || wordpressPostStatus(targetCharacter, wpSettings);
       const postScheduledAt = postMode === "future" ? (scheduledAt || reservationScheduledAt(item)) : "";
       const postScheduledLocal = postMode === "future" ? reservationScheduledLocal(item) : "";
       const categoryList = wordpressCategories(targetCharacter, wpSettings);
@@ -8947,7 +8947,21 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         clearIdeaSummaryFieldsAfterReservation();
         clearSubCharacterSelection(item.character || val("character"));
         saveDraft();
-        setXPostStatus(`Xへ投稿しました: ${post.url}${localSaveMessage} / 次の予約日: ${nextDate}`, messageType);
+        let message = `Xへ投稿しました: ${post.url}${localSaveMessage} / 次の予約日: ${nextDate}`;
+        if (wordpressShouldPostWithX(item.character)) {
+          try {
+            const wpResult = await postReservationToWordPress(targetItem, image, null, true, { postMode: "publish" });
+            message += ` / WordPressも公開: ${wpResult.post.link || `ID ${wpResult.post.id}`}`;
+            if (wpResult.warnings && wpResult.warnings.length) {
+              message += `（WP注意: ${wpResult.warnings.join(" / ")}）`;
+            }
+          } catch (wpError) {
+            message += ` / WordPressエラー: ${wpError.message}`;
+            messageType = "err";
+            setWpStatus(`WordPress投稿エラー: ${wpError.message}`, "err");
+          }
+        }
+        setXPostStatus(message, messageType);
         $("statusText").textContent = `Xへ投稿し、予約投稿完了に移動しました。次の予約日は${nextDate}にしました。`;
         setTimeout(() => $("statusText").textContent = "", 3200);
       } catch (error) {
