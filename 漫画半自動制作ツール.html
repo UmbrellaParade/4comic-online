@@ -1094,6 +1094,12 @@
           <div class="actions">
             <button id="loadImageFolder" class="secondary" type="button">画像フォルダー読込</button>
             <button id="loadImageFiles" class="secondary" type="button">画像ファイル追加</button>
+            <select id="imageFileCategory" style="font-size:12px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);">
+              <option value="人物画像">人物画像</option>
+              <option value="漫画画像">漫画画像</option>
+              <option value="漫画タイトルサムネ">タイトルサムネ</option>
+              <option value="読み込み画像">その他</option>
+            </select>
             <button id="clearRuntimeImages" class="secondary" type="button">追加画像クリア</button>
           </div>
           <input id="imageFolderInput" type="file" accept="image/*" multiple webkitdirectory style="display:none">
@@ -3833,7 +3839,7 @@
       if (!response.ok || !json.ok) throw new Error(json.error || `HTTP ${response.status}`);
     }
 
-    async function addRuntimeImages(files) {
+    async function addRuntimeImages(files, overrideCategory = null) {
       const character = val("character") || "ヴェル13世";
       const list = Array.from(files || []).filter((file) => file.type.startsWith("image/") || IMAGE_FILE_RE.test(file.name));
       if (!list.length) {
@@ -3846,7 +3852,7 @@
       const prepared = await Promise.all(list.map(async (file) => ({
         name: file.name,
         localPath: file.webkitRelativePath || file.name,
-        category: runtimeCategory(file),
+        category: overrideCategory || runtimeCategory(file),
         dataUrl: await fileToDataUrl(file),
       })));
 
@@ -11419,7 +11425,8 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       event.target.value = "";
     });
     $("imageFileInput").addEventListener("change", (event) => {
-      addRuntimeImages(event.target.files).catch((error) => {
+      const category = $("imageFileCategory")?.value || null;
+      addRuntimeImages(event.target.files, category).catch((error) => {
         console.error(error);
         $("statusText").textContent = `画像保存エラー: ${error.message}`;
       });
