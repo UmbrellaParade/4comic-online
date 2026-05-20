@@ -5717,7 +5717,22 @@ ${text}`;
 
     function storeCloudValue(key, value, overwrite = false) {
       if (!serverStateAllowedKey(key) || value === undefined || value === null) return false;
-      if (!overwrite && localStorage.getItem(key) !== null) return false;
+      if (!overwrite) {
+        const existing = localStorage.getItem(key);
+        if (existing !== null) {
+          // 画像セットキーは、ローカルが空でサーバーに実データがある場合は上書きする
+          if (/^umbrellaMangaImageSet_/.test(key)) {
+            try {
+              const existingParsed = JSON.parse(existing);
+              if (imageSetHasValue(existingParsed)) return false;
+              const incomingParsed = typeof value === "string" ? JSON.parse(value) : value;
+              if (!imageSetHasValue(incomingParsed)) return false;
+            } catch { return false; }
+          } else {
+            return false;
+          }
+        }
+      }
       localStorage.setItem(key, typeof value === "string" ? value : JSON.stringify(value));
       return true;
     }
@@ -5822,7 +5837,7 @@ ${text}`;
         saveXOAuthSettings(false, activeXOAuthSettingsCharacter || activeCharacter());
         if (activeWordPressSettingsCharacter) autosaveWordPressSettings(activeWordPressSettingsCharacter);
         saveImageDownloadNameConfig(activeCharacter());
-        const result = await pushCloudStateToServer();
+        const result = await pushCloudStateToServer({ continueOnPrivateError: true });
         const privateNote = result.skippedPrivate ? " / API・WordPress・X秘密情報は同期キーを入れると同期できます" : "";
         const errorNote = result.errors.length ? ` / 注意: ${result.errors[0]}` : "";
         localStorage.setItem(LAST_CLOUD_PUSH_KEY, new Date().toISOString());
@@ -5830,6 +5845,7 @@ ${text}`;
       } catch (error) {
         console.error(error);
         setCloudSyncStatus(`クラウド保存エラー: ${error.message}`, "err");
+        throw error;
       }
     }
 
@@ -11609,7 +11625,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     $("saveApiKey").addEventListener("click", () => {
       saveApiKeys();
     });
-    $("saveCloudSync").addEventListener("click", saveCurrentStateToCloud);
+    $("saveCloudSync").addEventListener("click", () => saveCurrentStateToCloud().catch(() => {}));
     $("loadCloudSync").addEventListener("click", loadCurrentStateFromCloud);
     if ($("cloudSaveAll")) {
       $("cloudSaveAll").addEventListener("click", async () => {
