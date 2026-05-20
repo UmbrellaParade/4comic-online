@@ -5619,7 +5619,7 @@ ${text}`;
     const WP_DEFAULT_SERIES_TITLES = {
       "ヴェル13世": "まだ、息してる！",
       "カーラ・マンソン": "カーラの情緒ログ",
-      "べるぼ": "べるぼのAI創作ログ",
+      "べるぼ": "べるぼの制作ログ",
       "アマモリ": "Umbrella Parade 記録室",
       "アマヨミ": "雨粒ノート"
     };
@@ -8206,10 +8206,12 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       return WP_DEFAULT_SERIES_TITLES[target] || target || "Umbrella Parade";
     }
 
+    const WP_LEGACY_SERIES_TITLES = ["べるぼのAI創作ログ"];
+
     function normalizedWordPressSeriesTitle(rawTitle, character = val("character")) {
       const targetDefault = defaultWordPressSeriesTitle(character);
       const title = String(rawTitle || targetDefault).trim();
-      const knownDefaults = Object.values(WP_DEFAULT_SERIES_TITLES);
+      const knownDefaults = [...Object.values(WP_DEFAULT_SERIES_TITLES), ...WP_LEGACY_SERIES_TITLES];
       if (knownDefaults.includes(title) && title !== targetDefault) return targetDefault;
       return title || targetDefault;
     }
@@ -8415,7 +8417,10 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       if ($("wpApplicationPassword")) $("wpApplicationPassword").value = settings.appPassword;
       if ($("wpPostMode")) $("wpPostMode").value = settings.postMode;
       if ($("wpFeaturedImageUrl")) $("wpFeaturedImageUrl").value = settings.featuredImageUrl;
-      if ($("wpSeriesTitle")) $("wpSeriesTitle").value = settings.seriesTitle || defaultWordPressSeriesTitle(character);
+      if ($("wpSeriesTitle")) {
+        $("wpSeriesTitle").value = settings.seriesTitle || defaultWordPressSeriesTitle(character);
+        $("wpSeriesTitle").placeholder = `例: ${defaultWordPressSeriesTitle(character)}（キャラごとに保存されます）`;
+      }
       if ($("wpCategories")) $("wpCategories").value = wordPressCategoriesToText(settings.categories, character);
       updateWordPressTitlePreview(character, settings);
       if ($("wpPostWithX")) $("wpPostWithX").checked = !!settings.postWithX;
