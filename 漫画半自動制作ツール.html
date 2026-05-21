@@ -1321,7 +1321,7 @@
         </div>
         <div id="homeMascotCard" class="home-mascot-card loading" aria-live="polite">
           <div class="home-mascot-img-wrap">
-            <img class="home-mascot-img" src="assets/vel-loading.jpg" alt="準備中のヴェル13世" loading="eager">
+            <img class="home-mascot-img" src="assets/vel-loading.png" alt="準備中のヴェル13世" loading="eager">
           </div>
           <div id="homeMascotBubble" class="home-mascot-bubble">
             今準備中だから、ちょっと待ってね<span class="home-loading-dots"></span>
@@ -1721,6 +1721,7 @@
               <select id="mangaIdeaSelect" class="workflow-list compact-list" size="4"></select>
             </label>
             <div class="actions">
+              <button id="stageCurrentMangaIdea" class="generate-ai-btn" type="button">今の入力欄を画像生成にセット</button>
               <button id="deleteMangaIdeaStock" class="secondary" type="button">選択中の未作成ネタを削除</button>
             </div>
             <div id="mangaIdeaStatus" class="image-status-line"></div>
@@ -6228,6 +6229,7 @@ ${text}`;
     const ACTIVE_IDEA_CONTENT_IDS = [
       "title", "subtitle", "p1", "p2", "p3", "p4", "manualPostText", "autoPostText", "ideaHashtags", "manualIdeaSeed"
     ];
+    const MANUAL_INPUT_MANGA_IDEA_KEY = "umbrellaManualInputMangaIdeaId";
     let activeScheduleCharacter = "";
     let activeXOAuthSettingsCharacter = "";
     let activeWordPressSettingsCharacter = "";
@@ -7432,6 +7434,41 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       return item;
     }
 
+    function currentInputHasIdeaContent() {
+      return ["title", "subtitle", "theme", "aim", "p1", "p2", "p3", "p4", "manualIdeaSeed"]
+        .some((id) => $(id) && val(id).trim());
+    }
+
+    function saveCurrentInputAsMangaIdea(showMessage = true, source = "manual_input_draft") {
+      if (!currentInputHasIdeaContent()) {
+        if (showMessage) setStatus("画像生成へ渡すネタが入力されていません。タイトルや1〜4コマ目を入力してください。");
+        return null;
+      }
+      const list = readList(STOCK_KEY);
+      const storedId = localStorage.getItem(MANUAL_INPUT_MANGA_IDEA_KEY) || "";
+      const existingIndex = storedId
+        ? list.findIndex((item) => item.id === storedId && ideaProductionStatus(item) !== "made")
+        : -1;
+      const nextItem = currentItem("idea");
+      nextItem.source = source;
+      nextItem.productionStatus = "unmade";
+      nextItem.updatedAt = new Date().toISOString();
+      if (existingIndex >= 0) {
+        nextItem.id = list[existingIndex].id;
+        nextItem.createdAt = list[existingIndex].createdAt || nextItem.createdAt;
+        list[existingIndex] = { ...list[existingIndex], ...nextItem };
+      } else {
+        list.unshift(nextItem);
+      }
+      writeList(STOCK_KEY, list.slice(0, 300));
+      localStorage.setItem(MANUAL_INPUT_MANGA_IDEA_KEY, nextItem.id);
+      selectUnmadeIdeaAfterGeneration(nextItem);
+      if (showMessage) {
+        setStatus("今の入力欄のネタを未作成ネタとして保存し、漫画画像生成にセットしました。", 3200);
+      }
+      return nextItem;
+    }
+
     function ideaProductionStatus(item) {
       return item.productionStatus || (item.type === "past" || item.source === "manual_past" ? "made" : "unmade");
     }
@@ -7519,7 +7556,9 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         const select = $("mangaIdeaSelect");
         const ideas = getUnmadeIdeaItems();
         if (!ideas.length) {
-          status.textContent = "未作成ネタがありません。ネタ台本ストックに追加するとここに出ます。";
+          status.textContent = currentInputHasIdeaContent()
+            ? "未作成ネタはありませんが、今の入力欄のネタをそのまま画像生成に使えます。履歴にも残す場合は「今の入力欄を画像生成にセット」を押してください。"
+            : "未作成ネタがありません。ネタ台本ストックに追加するとここに出ます。";
           return;
         }
         const item = select && select.value ? getIdeaById(select.value) : null;
@@ -7578,6 +7617,9 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         writeList(STOCK_KEY, readList(STOCK_KEY).filter((stockItem) => stockItem.id !== id));
         if (localStorage.getItem(ACTIVE_MANGA_IDEA_KEY) === id) {
           localStorage.removeItem(ACTIVE_MANGA_IDEA_KEY);
+        }
+        if (localStorage.getItem(MANUAL_INPUT_MANGA_IDEA_KEY) === id) {
+          localStorage.removeItem(MANUAL_INPUT_MANGA_IDEA_KEY);
         }
         if ($("ideaStockList") && $("ideaStockList").value === id) $("ideaStockList").value = "";
         renderIdeaStock();
@@ -7722,6 +7764,9 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         if (status === "made" && localStorage.getItem(ACTIVE_MANGA_IDEA_KEY) === id) {
           localStorage.removeItem(ACTIVE_MANGA_IDEA_KEY);
         }
+        if (status === "made" && localStorage.getItem(MANUAL_INPUT_MANGA_IDEA_KEY) === id) {
+          localStorage.removeItem(MANUAL_INPUT_MANGA_IDEA_KEY);
+        }
         renderIdeaStock();
         if (showMessage) {
           setStatus(status === "made" ? "ネタを作成済みに移動しました。" : "ネタを未作成に戻しました。");
@@ -7789,6 +7834,9 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       writeList(STOCK_KEY, readList(STOCK_KEY).filter((item) => item.id !== id));
       if (localStorage.getItem(ACTIVE_MANGA_IDEA_KEY) === id) {
         localStorage.removeItem(ACTIVE_MANGA_IDEA_KEY);
+      }
+      if (localStorage.getItem(MANUAL_INPUT_MANGA_IDEA_KEY) === id) {
+        localStorage.removeItem(MANUAL_INPUT_MANGA_IDEA_KEY);
       }
       renderIdeaStock();
     }
@@ -9424,7 +9472,8 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       button.innerHTML = '<span class="spinner"></span>WP投稿中…';
       try {
         setWpStatus("WordPressへ漫画画像を投稿しています。");
-        await postReservationToWordPress(item, null, null, false);
+        const targetItem = persistSelectedReservationTextOverrides(item) || item;
+        await postReservationToWordPress(targetItem, null, null, false);
         clearGeneratedImageAfterReservation("WordPress投稿/予約が完了したので、漫画画像生成欄の表示をクリアしました。");
         clearIdeaSummaryFieldsAfterReservation();
       } catch (error) {
@@ -11135,9 +11184,10 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
 
     function clearIdeaSummaryFieldsAfterReservation() {
       clearActiveIdeaDraft();
-      ["title", "subtitle", "theme", "aim", "p1", "p2", "p3", "p4", "manualPostText", "autoPostText", "ideaHashtags"].forEach((id) => {
+      ["title", "subtitle", "theme", "aim", "p1", "p2", "p3", "p4", "manualPostText", "autoPostText", "ideaHashtags", "manualIdeaSeed"].forEach((id) => {
         if ($(id)) $(id).value = "";
       });
+      localStorage.removeItem(MANUAL_INPUT_MANGA_IDEA_KEY);
       markIdeaSummaryReset();
       render();
     }
@@ -12069,6 +12119,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       event.target.value = "";
     });
     $("saveIdeaStock").addEventListener("click", () => saveIdeaStock(false));
+    $("stageCurrentMangaIdea").addEventListener("click", () => saveCurrentInputAsMangaIdea(true, "manual_input_button"));
     $("loadIdeaStock").addEventListener("click", loadIdeaStock);
     $("markIdeaMade").addEventListener("click", () => updateSelectedIdeaStatus("made"));
     $("markIdeaUnmade").addEventListener("click", () => updateSelectedIdeaStatus("unmade"));
@@ -13012,6 +13063,9 @@ ${JSON.stringify({
     }
 
     function goToImageGenerationFromEditor() {
+      saveCurrentInputAsMangaIdea(false, "editor_go_image");
+      render();
+      setToolView("image", { scroll: false });
       if ($("mangaImageGenBox")) $("mangaImageGenBox").scrollIntoView({ behavior: "smooth", block: "start" });
       if ($("mangaGenBtn")) $("mangaGenBtn").focus();
       if ($("imagePromptEvaluationResult") && !lastImagePromptEvaluation) {
@@ -13184,8 +13238,14 @@ Panel ${panelNumber} visible dialogue: ${split.speech || ""}`;
         return;
       }
       saveActiveIdeaDraft();
+      const stockItem = saveCurrentInputAsMangaIdea(false, "manual_seed_fields");
       render();
-      setStatus(`指定内容を${count}項目に反映しました。必要ならこのまま画像生成へ進めます。`, 3200);
+      setStatus(
+        stockItem
+          ? `指定内容を${count}項目に反映し、漫画画像生成にもセットしました。`
+          : `指定内容を${count}項目に反映しました。必要ならこのまま画像生成へ進めます。`,
+        3600
+      );
     }
 
     async function autoGenerate(options = {}) {
