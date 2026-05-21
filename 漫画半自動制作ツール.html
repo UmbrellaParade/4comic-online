@@ -339,6 +339,114 @@
       gap: 14px;
       flex-wrap: wrap;
     }
+    .home-topline {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+      gap: 16px;
+      align-items: stretch;
+    }
+    .home-mascot-card {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(96px, 132px) minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      min-height: 150px;
+      padding: 12px;
+      border: 1px solid #f0c8d3;
+      border-radius: 8px;
+      background: linear-gradient(145deg, #fff8fb 0%, #ffffff 54%, #eef7f8 100%);
+      overflow: hidden;
+    }
+    .home-mascot-card::after {
+      content: "";
+      position: absolute;
+      inset: auto 16px 12px auto;
+      width: 82px;
+      height: 82px;
+      border-radius: 999px;
+      background: rgba(31, 122, 140, 0.11);
+      filter: blur(4px);
+    }
+    .home-mascot-img-wrap {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      place-items: center;
+      min-height: 124px;
+    }
+    .home-mascot-img {
+      width: min(132px, 100%);
+      height: 136px;
+      max-height: 136px;
+      object-fit: cover;
+      object-position: center;
+      border-radius: 18px;
+      background: #ffffff;
+      filter: drop-shadow(0 12px 16px rgba(24, 32, 36, 0.18));
+      transform-origin: 50% 92%;
+      animation: mascotFloat 2.6s ease-in-out infinite;
+    }
+    .home-mascot-bubble {
+      position: relative;
+      z-index: 1;
+      align-self: center;
+      min-width: 0;
+      padding: 12px 14px;
+      border: 2px solid #f1b4c4;
+      border-radius: 18px;
+      background: #ffffff;
+      color: var(--ink);
+      font-weight: 900;
+      line-height: 1.55;
+      box-shadow: 0 8px 18px rgba(26, 35, 40, 0.08);
+    }
+    .home-mascot-bubble::before {
+      content: "";
+      position: absolute;
+      left: -11px;
+      top: 42%;
+      width: 18px;
+      height: 18px;
+      border-left: 2px solid #f1b4c4;
+      border-bottom: 2px solid #f1b4c4;
+      background: #ffffff;
+      transform: rotate(45deg);
+    }
+    .home-loading-dots::after {
+      content: "";
+      display: inline-block;
+      width: 1.4em;
+      text-align: left;
+      animation: loadingDots 1.3s steps(4, end) infinite;
+    }
+    .home-mascot-card.ready .home-mascot-img {
+      animation-duration: 4s;
+    }
+    .home-mascot-card.warn .home-mascot-bubble {
+      border-color: #e3b45f;
+      background: #fff9e8;
+    }
+    .home-mascot-card.warn .home-mascot-bubble::before {
+      border-color: #e3b45f;
+      background: #fff9e8;
+    }
+    @keyframes mascotFloat {
+      0%, 100% { transform: translateY(0) rotate(-1deg); }
+      50% { transform: translateY(-8px) rotate(1.5deg); }
+    }
+    @keyframes loadingDots {
+      0% { content: ""; }
+      25% { content: "."; }
+      50% { content: ".."; }
+      75%, 100% { content: "..."; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .home-mascot-img,
+      .home-loading-dots::after {
+        animation: none;
+      }
+    }
     .home-kicker {
       margin: 0 0 4px;
       color: var(--muted);
@@ -967,6 +1075,9 @@
       .app-mode-nav {
         top: 0;
       }
+      .home-topline {
+        grid-template-columns: 1fr;
+      }
       .home-card-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
@@ -1028,6 +1139,24 @@
       }
       .home-dashboard-inner {
         padding: 12px;
+      }
+      .home-mascot-card {
+        grid-template-columns: 92px minmax(0, 1fr);
+        min-height: 126px;
+        padding: 10px;
+      }
+      .home-mascot-img-wrap {
+        min-height: 104px;
+      }
+      .home-mascot-img {
+        width: 102px;
+        height: 112px;
+        max-height: 112px;
+      }
+      .home-mascot-bubble {
+        padding: 10px 12px;
+        font-size: 13px;
+        border-radius: 16px;
       }
       .home-card-grid,
       .home-load-grid {
@@ -1181,13 +1310,23 @@
 
   <section id="homeDashboard" class="home-dashboard" aria-label="ホーム">
     <div class="home-dashboard-inner">
-      <div class="home-hero">
-        <div>
-          <p class="home-kicker">今日の作業</p>
-          <h2 class="home-title">次にやることを選んでください</h2>
-          <p class="home-subtitle">キャラクター、ネタ、画像、投稿の状況をまとめて確認できます。</p>
+      <div class="home-topline">
+        <div class="home-hero">
+          <div>
+            <p class="home-kicker">今日の作業</p>
+            <h2 class="home-title">次にやることを選んでください</h2>
+            <p class="home-subtitle">キャラクター、ネタ、画像、投稿の状況をまとめて確認できます。</p>
+          </div>
+          <div id="homeReadyStatus" class="home-status-pill">準備中</div>
         </div>
-        <div id="homeReadyStatus" class="home-status-pill">準備中</div>
+        <div id="homeMascotCard" class="home-mascot-card loading" aria-live="polite">
+          <div class="home-mascot-img-wrap">
+            <img class="home-mascot-img" src="assets/vel-loading.jpg" alt="準備中のヴェル13世" loading="eager">
+          </div>
+          <div id="homeMascotBubble" class="home-mascot-bubble">
+            今準備中だから、ちょっと待ってね<span class="home-loading-dots"></span>
+          </div>
+        </div>
       </div>
       <div class="home-card-grid">
         <div class="home-card">
@@ -6504,6 +6643,18 @@ ${text}`;
       setHomeText("homeLoadServer", serverUrl || "未設定");
       setHomeText("homeReadyStatus", scheduleWarning ? "予定日を確認" : "準備完了");
       if ($("homeReadyStatus")) $("homeReadyStatus").className = `home-status-pill${scheduleWarning ? " warn" : ""}`;
+      const mascotCard = $("homeMascotCard");
+      if (mascotCard) {
+        mascotCard.classList.toggle("loading", false);
+        mascotCard.classList.toggle("ready", !scheduleWarning);
+        mascotCard.classList.toggle("warn", !!scheduleWarning);
+      }
+      setHomeText(
+        "homeMascotBubble",
+        scheduleWarning
+          ? "投稿予定日が過去日になってるみたい。ここだけ確認してから進もうぜ。"
+          : "準備できたよ。今日も一歩だけ進もうぜ。"
+      );
 
       const seq = ++homeKeptUpdateSeq;
       getAllGeneratedImages()

@@ -55,6 +55,7 @@ const CLIENT_STATE_PATH = path.join(DATA_DIR, "client-state.json");
 const SEED_IDEA_STOCK_PATH = path.join(__dirname, "seed-idea-stock.json");
 const SEED_RUNTIME_IMAGES_PATH = path.join(__dirname, "seed-runtime-images.json");
 const SEED_RUNTIME_IMAGES_DIR = path.join(__dirname, "seed-runtime-images");
+const STATIC_ASSETS_DIR = path.join(__dirname, "assets");
 const GITHUB_WORKFLOWS_DIR = path.join(__dirname, ".github", "workflows");
 const GIT_DIR = path.join(__dirname, ".git");
 const GITHUB_API_BASE = String(process.env.PERSISTENCE_GITHUB_API_BASE || "https://api.github.com").replace(/\/+$/, "");
@@ -678,6 +679,38 @@ function mediaTypeFromImageName(name) {
   if (ext === ".webp") return "image/webp";
   if (ext === ".gif") return "image/gif";
   return "image/png";
+}
+
+function staticAssetPath(assetPath) {
+  const clean = decodeURIComponent(String(assetPath || ""))
+    .replace(/^\/+/, "")
+    .replace(/\\/g, "/");
+  const resolved = path.resolve(STATIC_ASSETS_DIR, clean);
+  const root = path.resolve(STATIC_ASSETS_DIR);
+  if (!(resolved === root || resolved.startsWith(`${root}${path.sep}`))) {
+    const error = new Error("Asset path is not allowed.");
+    error.status = 400;
+    throw error;
+  }
+  if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+    const error = new Error("Asset not found.");
+    error.status = 404;
+    throw error;
+  }
+  return resolved;
+}
+
+function sendStaticAsset(res, assetPath) {
+  try {
+    const filePath = staticAssetPath(assetPath);
+    res.writeHead(200, {
+      "Content-Type": mediaTypeFromImageName(filePath),
+      "Cache-Control": "public, max-age=86400"
+    });
+    fs.createReadStream(filePath).pipe(res);
+  } catch (error) {
+    sendHtml(res, error.status || 500, "Asset error", "<h1>Asset could not be loaded.</h1>");
+  }
 }
 
 function listImportImages(character) {
@@ -2790,6 +2823,11 @@ const server = http.createServer(async (req, res) => {
   }
 
   const requestUrl = new URL(req.url, `http://${HOST}:${PORT}`);
+
+  if (req.method === "GET" && requestUrl.pathname.startsWith("/assets/")) {
+    sendStaticAsset(res, requestUrl.pathname.replace(/^\/assets\//, ""));
+    return;
+  }
 
   if (req.method === "GET" && ["/", "/tool", "/tool/"].includes(requestUrl.pathname)) {
     sendToolHtml(res);
