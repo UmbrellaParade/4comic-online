@@ -290,6 +290,208 @@
     }
     .api-status.ok { color: var(--ok); }
     .api-status.err { color: var(--warn); }
+    .app-mode-nav {
+      position: sticky;
+      top: 68px;
+      z-index: 9;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(10px);
+    }
+    .app-mode-nav button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 94px;
+      min-height: 40px;
+      border-color: var(--line);
+      background: #ffffff;
+      color: var(--accent-dark);
+    }
+    .app-mode-nav button.active {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #ffffff;
+    }
+    .home-dashboard {
+      width: min(1400px, 100%);
+      margin: 18px auto 0;
+      padding: 0 18px;
+    }
+    .home-dashboard-inner {
+      display: grid;
+      gap: 14px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+    .home-hero {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .home-kicker {
+      margin: 0 0 4px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .home-title {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.35;
+    }
+    .home-subtitle {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .home-status-pill {
+      min-height: 38px;
+      padding: 8px 12px;
+      border: 1px solid #8fba9d;
+      border-radius: 999px;
+      color: var(--ok);
+      background: #e9f5ed;
+      font-size: 13px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .home-status-pill.warn {
+      border-color: #e3b45f;
+      color: #7a4e00;
+      background: #fff4d8;
+    }
+    .home-card-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .home-card {
+      display: grid;
+      gap: 4px;
+      min-height: 86px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfc;
+    }
+    .home-card-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .home-card-value {
+      min-width: 0;
+      font-size: 19px;
+      font-weight: 900;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+    .home-card-note {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .home-load-panel {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fffefa;
+    }
+    .home-load-title {
+      font-size: 13px;
+      font-weight: 900;
+    }
+    .home-load-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px 12px;
+    }
+    .home-load-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-width: 0;
+      padding: 6px 0;
+      border-bottom: 1px dashed var(--line);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .home-load-row span:last-child {
+      color: var(--muted);
+      text-align: right;
+      overflow-wrap: anywhere;
+    }
+    .home-action-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    body:not([data-tool-view="home"]) #homeDashboard {
+      display: none;
+    }
+    body[data-tool-view="home"] main {
+      display: none;
+    }
+    body:not([data-tool-view="settings"]) .api-bar {
+      display: none;
+    }
+    body[data-tool-view="idea"] #characterPresetPanel,
+    body[data-tool-view="idea"] #mangaImageGenBox,
+    body[data-tool-view="idea"] #preReservationStockPanel,
+    body[data-tool-view="idea"] #snsReservationPanel {
+      display: none;
+    }
+    body[data-tool-view="image"] .manual-idea-box,
+    body[data-tool-view="image"] #ideaStockPanel,
+    body[data-tool-view="image"] #snsReservationPanel {
+      display: none;
+    }
+    body[data-tool-view="post"] .manual-idea-box,
+    body[data-tool-view="post"] #characterPresetPanel,
+    body[data-tool-view="post"] #ideaTitleFields,
+    body[data-tool-view="post"] #ideaThemeField,
+    body[data-tool-view="post"] #ideaAimField,
+    body[data-tool-view="post"] #panelLinesFields,
+    body[data-tool-view="post"] #ideaOptionsRow,
+    body[data-tool-view="post"] #ideaNotesField,
+    body[data-tool-view="post"] #aiEditorPanel,
+    body[data-tool-view="post"] #ideaStockPanel,
+    body[data-tool-view="post"] #mangaImageGenBox,
+    body[data-tool-view="post"] #section-output {
+      display: none;
+    }
+    body[data-tool-view="settings"] .manual-idea-box,
+    body[data-tool-view="settings"] #ideaTitleFields,
+    body[data-tool-view="settings"] #ideaThemeField,
+    body[data-tool-view="settings"] #ideaAimField,
+    body[data-tool-view="settings"] #panelLinesFields,
+    body[data-tool-view="settings"] #ideaOptionsRow,
+    body[data-tool-view="settings"] #ideaNotesField,
+    body[data-tool-view="settings"] #aiEditorPanel,
+    body[data-tool-view="settings"] #ideaStockPanel,
+    body[data-tool-view="settings"] #mangaImageGenBox,
+    body[data-tool-view="settings"] #preReservationStockPanel,
+    body[data-tool-view="settings"] #section-output {
+      display: none;
+    }
+    body[data-tool-view="settings"] #snsReservationPanel > details:not(#xPostSettingsPanel):not(#wordPressSettingsPanel),
+    body[data-tool-view="settings"] #snsReservationPanel > .subchar-section:not(#xPostSettingsPanel):not(#wordPressSettingsPanel),
+    body[data-tool-view="settings"] #snsReservationPanel > label {
+      display: none;
+    }
     /* workflow upgrade styles */
     .mini-select {
       width: auto;
@@ -762,6 +964,12 @@
       main {
         grid-template-columns: 1fr;
       }
+      .app-mode-nav {
+        top: 0;
+      }
+      .home-card-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
       header {
         position: static;
         align-items: flex-start;
@@ -789,13 +997,52 @@
       }
       body {
         font-size: 15px;
+        padding-bottom: 78px;
       }
       h1 {
         font-size: 17px;
       }
+      .app-mode-nav {
+        position: fixed;
+        inset: auto 0 0 0;
+        top: auto;
+        z-index: 30;
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 4px;
+        padding: 7px 7px max(7px, env(safe-area-inset-bottom));
+        border-top: 1px solid var(--line);
+        border-bottom: 0;
+        box-shadow: 0 -10px 22px rgba(26, 35, 40, 0.1);
+      }
+      .app-mode-nav button {
+        min-width: 0;
+        min-height: 48px;
+        padding: 6px 4px;
+        border-radius: 8px;
+        font-size: 12px;
+      }
+      .home-dashboard {
+        margin-top: 10px;
+        padding: 0 10px;
+      }
+      .home-dashboard-inner {
+        padding: 12px;
+      }
+      .home-card-grid,
+      .home-load-grid {
+        grid-template-columns: 1fr;
+      }
+      .home-title {
+        font-size: 18px;
+      }
       .back-to-top {
         right: 12px;
-        bottom: 12px;
+        bottom: 88px;
+      }
+      .cloud-save-all {
+        right: 12px;
+        bottom: 140px;
       }
       main {
         padding: 10px;
@@ -856,7 +1103,7 @@
 
   </style>
 </head>
-<body>
+<body data-tool-view="home">
   <header>
     <h1>Umbrella Parade 漫画半自動制作ツール</h1>
     <div class="actions">
@@ -924,6 +1171,66 @@
     </details>
   </div>
 
+  <nav class="app-mode-nav" aria-label="作業メニュー">
+    <button type="button" data-tool-view-button="home">ホーム</button>
+    <button type="button" data-tool-view-button="idea">ネタ</button>
+    <button type="button" data-tool-view-button="image">画像</button>
+    <button type="button" data-tool-view-button="post">投稿</button>
+    <button type="button" data-tool-view-button="settings">設定</button>
+  </nav>
+
+  <section id="homeDashboard" class="home-dashboard" aria-label="ホーム">
+    <div class="home-dashboard-inner">
+      <div class="home-hero">
+        <div>
+          <p class="home-kicker">今日の作業</p>
+          <h2 class="home-title">次にやることを選んでください</h2>
+          <p class="home-subtitle">キャラクター、ネタ、画像、投稿の状況をまとめて確認できます。</p>
+        </div>
+        <div id="homeReadyStatus" class="home-status-pill">準備中</div>
+      </div>
+      <div class="home-card-grid">
+        <div class="home-card">
+          <div class="home-card-label">選択中キャラ</div>
+          <div id="homeSelectedCharacter" class="home-card-value">-</div>
+          <div id="homeCharacterNote" class="home-card-note">キャラ設定を確認中</div>
+        </div>
+        <div class="home-card">
+          <div class="home-card-label">次の投稿予定</div>
+          <div id="homeNextSchedule" class="home-card-value">-</div>
+          <div class="home-card-note">キャラ別に保存</div>
+        </div>
+        <div class="home-card">
+          <div class="home-card-label">未投稿ネタ</div>
+          <div id="homeUnmadeCount" class="home-card-value">0件</div>
+          <div class="home-card-note">漫画化前のストック</div>
+        </div>
+        <div class="home-card">
+          <div class="home-card-label">キープ画像</div>
+          <div id="homeKeptCount" class="home-card-value">0枚</div>
+          <div id="homeReservationCount" class="home-card-note">予約前 0件</div>
+        </div>
+      </div>
+      <div class="home-load-panel">
+        <div class="home-load-title">読み込み状況</div>
+        <div class="home-load-grid">
+          <div class="home-load-row"><span>キャラ設定</span><span id="homeLoadCharacter">確認中</span></div>
+          <div class="home-load-row"><span>画像データ</span><span id="homeLoadImages">確認中</span></div>
+          <div class="home-load-row"><span>ネタ台本</span><span id="homeLoadIdeas">確認中</span></div>
+          <div class="home-load-row"><span>投稿設定</span><span id="homeLoadPosting">確認中</span></div>
+          <div class="home-load-row"><span>クラウド同期</span><span id="homeLoadCloud">確認中</span></div>
+          <div class="home-load-row"><span>画像生成サーバー</span><span id="homeLoadServer">確認中</span></div>
+        </div>
+      </div>
+      <div class="home-action-row">
+        <button type="button" data-tool-view-jump="idea">ネタを作る</button>
+        <button type="button" data-tool-view-jump="image" class="secondary">画像を作る</button>
+        <button type="button" data-tool-view-jump="post" class="generate-ai-btn">今すぐ投稿へ</button>
+        <button type="button" data-tool-view-jump="settings" class="secondary">設定を見る</button>
+      </div>
+    </div>
+  </section>
+
   <nav class="side-toc" aria-label="ツール目次">
     <div class="side-toc-title">目次</div>
     <a href="#section-input">入力</a>
@@ -942,7 +1249,7 @@
     <section id="section-input">
       <h2 class="section-title">入力</h2>
       <div class="body grid">
-        <div class="grid cols">
+        <div class="grid cols" id="workContextPanel">
           <label>キャラクター
             <select id="character">
               <option>ヴェル13世</option>
@@ -1128,7 +1435,7 @@
           <button id="autoGenerate" class="generate-ai-btn" type="button">✨ ネタ自動生成</button>
           <button id="reGenerate" class="secondary" type="button">↺ 再生成</button>
         </div>
-        <div class="grid cols">
+        <div class="grid cols" id="ideaTitleFields">
           <label>タイトル
             <input id="title" placeholder="例：止まってる日">
           </label>
@@ -1137,15 +1444,15 @@
           </label>
         </div>
 
-        <label>テーマ
+        <label id="ideaThemeField">テーマ
           <input id="theme" placeholder="例：未完成でも進む">
         </label>
 
-        <label class="tall">狙い
+        <label class="tall" id="ideaAimField">狙い
           <textarea id="aim" placeholder="読者に感じてほしいこと、刺したい感情"></textarea>
         </label>
 
-        <div class="panel-lines">
+        <div class="panel-lines" id="panelLinesFields">
           <label>1コマ目
             <textarea id="p1" placeholder="共感。弱音・迷い。"></textarea>
           </label>
@@ -1206,7 +1513,7 @@
           </div>
         </details>
 
-        <div class="check-row">
+        <div class="check-row" id="ideaOptionsRow">
           <label><input id="aiLabel" type="checkbox" checked> AI生成表記</label>
           <label><input id="question" type="checkbox" checked> 問いかけを入れる</label>
           <label><input id="logo" type="checkbox" checked> ロゴ欄を入れる</label>
@@ -1215,7 +1522,7 @@
           <label><input id="autoObsidian" type="checkbox"> 生成後Obsidianへ送る</label>
         </div>
 
-        <label class="tall">メモ
+        <label class="tall" id="ideaNotesField">メモ
           <textarea id="notes" placeholder="画像の修正点、投稿後の反応、次に試したいこと"></textarea>
         </label>
 
@@ -6084,6 +6391,130 @@ ${text}`;
     function writeList(key, list) {
       localStorage.setItem(key, JSON.stringify(Array.isArray(list) ? list : []));
       if (serverStateAllowedKey(key)) syncServerClientState(key, Array.isArray(list) ? list : []);
+    }
+
+    const TOOL_VIEW_KEY = "umbrellaMangaToolView";
+    const TOOL_VIEWS = ["home", "idea", "image", "post", "settings"];
+    let homeDashboardTimer = 0;
+    let homeKeptUpdateSeq = 0;
+
+    function normalizeToolView(view) {
+      return TOOL_VIEWS.includes(view) ? view : "home";
+    }
+
+    function setHomeText(id, value) {
+      const el = $(id);
+      if (el) el.textContent = value;
+    }
+
+    function viewScrollTarget(view) {
+      const map = {
+        home: "homeDashboard",
+        idea: "section-input",
+        image: "mangaImageGenBox",
+        post: "snsReservationPanel",
+        settings: "characterPresetPanel"
+      };
+      return $(map[view] || "homeDashboard");
+    }
+
+    function openPanelsForToolView(view) {
+      const panels = [];
+      if (view === "idea") panels.push("aiEditorPanel", "ideaStockPanel");
+      if (view === "image") panels.push("characterPresetPanel", "imagePromptSettingsPanel", "generatedImageActionsPanel", "preReservationStockPanel");
+      if (view === "post") panels.push("preReservationStockPanel", "reservationTextPanel", "reservationActionPanel", "reservationCompletedQueuePanel");
+      if (view === "settings") panels.push("characterPresetPanel", "xPostSettingsPanel", "wordPressSettingsPanel");
+      panels.forEach((id) => {
+        const panel = $(id);
+        if (panel && "open" in panel) panel.open = true;
+      });
+    }
+
+    function setToolView(view, options = {}) {
+      const next = normalizeToolView(view);
+      document.body.dataset.toolView = next;
+      localStorage.setItem(TOOL_VIEW_KEY, next);
+      document.querySelectorAll("[data-tool-view-button]").forEach((button) => {
+        const active = button.dataset.toolViewButton === next;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-current", active ? "page" : "false");
+      });
+      openPanelsForToolView(next);
+      updateHomeDashboard();
+      if (options.scroll !== false) {
+        const target = viewScrollTarget(next);
+        if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+
+    function initToolViewNavigation() {
+      document.querySelectorAll("[data-tool-view-button], [data-tool-view-jump]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const view = button.dataset.toolViewButton || button.dataset.toolViewJump;
+          setToolView(view);
+        });
+      });
+      setToolView(localStorage.getItem(TOOL_VIEW_KEY) || "home", { scroll: false });
+    }
+
+    function activeCharacterIdeas(character = activeCharacter()) {
+      return readList(STOCK_KEY).filter((item) => !item.character || item.character === character);
+    }
+
+    function activeCharacterReservations(character = activeCharacter()) {
+      return readList(RESERVATION_KEY).filter((item) => !item.character || item.character === character);
+    }
+
+    function scheduleHomeDashboardUpdate() {
+      clearTimeout(homeDashboardTimer);
+      homeDashboardTimer = setTimeout(updateHomeDashboard, 80);
+    }
+
+    function updateHomeDashboard() {
+      if (!$("homeDashboard")) return;
+      const character = activeCharacter();
+      const ideas = activeCharacterIdeas(character);
+      const unmadeCount = ideas.filter((item) => ideaProductionStatus(item) !== "made").length;
+      const reservations = activeCharacterReservations(character);
+      const beforeCount = reservations.filter((item) => reservationStatus(item) !== "done").length;
+      const date = savedScheduledDateForCharacter(character) || val("scheduled") || today();
+      const time = savedScheduledTimeForCharacter(character) || val("scheduledTime") || localStorage.getItem(LAST_TIME_KEY) || "20:00";
+      const scheduleWarning = validDateInput(date) && date < today() ? "（過去日・確認）" : "";
+      const allImages = getCharacterImages(character);
+      const runtimeCount = (runtimeImagesByCharacter[character] || []).length;
+      const cloudUrl = xCloudServerUrl ? xCloudServerUrl() : "";
+      const serverUrl = xLocalServerUrl ? xLocalServerUrl() : "";
+      const syncKey = cloudSyncKeyValue ? cloudSyncKeyValue() : "";
+      const wpSettings = wordpressSettingsForCharacter ? wordpressSettingsForCharacter(character) : {};
+      const xToken = getXAccessTokenForCharacter ? getXAccessTokenForCharacter(character) : "";
+
+      setHomeText("homeSelectedCharacter", character);
+      setHomeText("homeCharacterNote", characterData[character] ? "プリセットあり" : "プリセット未確認");
+      setHomeText("homeNextSchedule", `${date} ${time}${scheduleWarning}`);
+      setHomeText("homeUnmadeCount", `${unmadeCount}件`);
+      setHomeText("homeReservationCount", `予約前 ${beforeCount}件`);
+      setHomeText("homeLoadCharacter", characterData[character] ? "読み込み完了" : "未確認");
+      setHomeText("homeLoadImages", `${allImages.length}件 / 追加${runtimeCount}件`);
+      setHomeText("homeLoadIdeas", `${ideas.length}件（未作成${unmadeCount}件）`);
+      setHomeText("homeLoadPosting", [
+        xToken ? "X取得済み" : "X未取得",
+        wpSettings.siteUrl ? "WP設定あり" : "WP未設定"
+      ].join(" / "));
+      setHomeText("homeLoadCloud", cloudUrl ? `クラウド: ${cloudUrl}` : (syncKey ? "同期キーあり" : "同期キー未入力"));
+      setHomeText("homeLoadServer", serverUrl || "未設定");
+      setHomeText("homeReadyStatus", scheduleWarning ? "予定日を確認" : "準備完了");
+      if ($("homeReadyStatus")) $("homeReadyStatus").className = `home-status-pill${scheduleWarning ? " warn" : ""}`;
+
+      const seq = ++homeKeptUpdateSeq;
+      getAllGeneratedImages()
+        .then((images) => {
+          if (seq !== homeKeptUpdateSeq) return;
+          const keptCount = (images || []).filter((image) => (!image.character || image.character === character) && image.keptAt).length;
+          setHomeText("homeKeptCount", `${keptCount}枚`);
+        })
+        .catch(() => {
+          if (seq === homeKeptUpdateSeq) setHomeText("homeKeptCount", "未確認");
+        });
     }
 
     function seedIdeaKey(item) {
@@ -11060,6 +11491,8 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       } catch (error) {
         console.error(error);
         setGeneratedImageStatus(`キープ画像の読み込みエラー: ${error.message}`, "err");
+      } finally {
+        scheduleHomeDashboardUpdate();
       }
     }
 
@@ -11195,6 +11628,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       renderIdeaStock();
       renderReservations();
       updateWordPressTitlePreview();
+      scheduleHomeDashboardUpdate();
     }
 
     function saveDraft() {
@@ -12794,6 +13228,7 @@ Panel ${panelNumber} visible dialogue: ${split.speech || ""}`;
       updateRuntimeImageStatus();
       renderKeptImages();
       await restoreDisplayedGeneratedImage();
+      initToolViewNavigation();
       render();
       autoInitialCloudPush().catch(() => {});
       checkSyncKeyServerStatus().catch(() => {});
