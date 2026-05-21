@@ -546,6 +546,7 @@
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
+      margin-top: 12px;
     }
     body:not([data-tool-view="home"]) #homeDashboard {
       display: none;
@@ -1320,6 +1321,12 @@
             <p class="home-kicker">今日の作業</p>
             <h2 class="home-title">次にやることを選んでください</h2>
             <p class="home-subtitle">キャラクター、ネタ、画像、投稿の状況をまとめて確認できます。</p>
+            <div class="home-action-row">
+              <button type="button" data-tool-view-jump="idea">ネタを作る</button>
+              <button type="button" data-tool-view-jump="image" class="secondary">画像を作る</button>
+              <button type="button" data-tool-view-jump="post" class="generate-ai-btn">今すぐ投稿へ</button>
+              <button type="button" data-tool-view-jump="settings" class="secondary">設定を見る</button>
+            </div>
           </div>
           <div id="homeReadyStatus" class="home-status-pill">準備中</div>
         </div>
@@ -1364,12 +1371,6 @@
           <div class="home-load-row"><span>クラウド同期</span><span id="homeLoadCloud">確認中</span></div>
           <div class="home-load-row"><span>画像生成サーバー</span><span id="homeLoadServer">確認中</span></div>
         </div>
-      </div>
-      <div class="home-action-row">
-        <button type="button" data-tool-view-jump="idea">ネタを作る</button>
-        <button type="button" data-tool-view-jump="image" class="secondary">画像を作る</button>
-        <button type="button" data-tool-view-jump="post" class="generate-ai-btn">今すぐ投稿へ</button>
-        <button type="button" data-tool-view-jump="settings" class="secondary">設定を見る</button>
       </div>
     </div>
   </section>
