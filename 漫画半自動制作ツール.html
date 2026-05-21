@@ -25,6 +25,7 @@
     html {
       scroll-behavior: smooth;
       scroll-padding-top: 88px;
+      overscroll-behavior-y: none;
     }
     body {
       margin: 0;
@@ -32,6 +33,7 @@
       color: var(--ink);
       background: var(--bg);
       line-height: 1.6;
+      overscroll-behavior-y: none;
     }
     header {
       display: flex;
@@ -6450,7 +6452,22 @@ ${text}`;
       }
     }
 
+    function setCloudSyncBusy(mode = "", busy = false) {
+      const saveButton = $("saveCloudSync");
+      const loadButton = $("loadCloudSync");
+      if (saveButton) {
+        saveButton.disabled = busy;
+        saveButton.textContent = busy && mode === "save" ? "保存中…" : "クラウドへ保存";
+      }
+      if (loadButton) {
+        loadButton.disabled = busy;
+        loadButton.textContent = busy && mode === "load" ? "読込中…" : "クラウドから読込";
+      }
+    }
+
     async function saveCurrentStateToCloud() {
+      setCloudSyncBusy("save", true);
+      setCloudSyncStatus("クラウドへ保存中です…");
       try {
         saveApiKeys({ quiet: true });
         saveModelChoice();
@@ -6467,10 +6484,14 @@ ${text}`;
         console.error(error);
         setCloudSyncStatus(`クラウド保存エラー: ${error.message}`, "err");
         throw error;
+      } finally {
+        setCloudSyncBusy("", false);
       }
     }
 
     async function loadCurrentStateFromCloud() {
+      setCloudSyncBusy("load", true);
+      setCloudSyncStatus("クラウドから読み込み中です…");
       try {
         saveCloudSyncKey();
         const result = await restoreCloudStateFromServer({ overwrite: true });
@@ -6481,6 +6502,8 @@ ${text}`;
       } catch (error) {
         console.error(error);
         setCloudSyncStatus(`クラウド読込エラー: ${error.message}`, "err");
+      } finally {
+        setCloudSyncBusy("", false);
       }
     }
 
@@ -13444,7 +13467,27 @@ Panel ${panelNumber} visible dialogue: ${split.speech || ""}`;
       }
     }
 
+    let pullToRefreshGuardInstalled = false;
+    function installPullToRefreshGuard() {
+      if (pullToRefreshGuardInstalled) return;
+      pullToRefreshGuardInstalled = true;
+      let touchStartY = 0;
+      window.addEventListener("touchstart", (event) => {
+        if (event.touches && event.touches.length === 1) {
+          touchStartY = event.touches[0].clientY;
+        }
+      }, { passive: true });
+      window.addEventListener("touchmove", (event) => {
+        if (!event.touches || event.touches.length !== 1) return;
+        const scrollRoot = document.scrollingElement || document.documentElement;
+        const atTop = scrollRoot.scrollTop <= 0;
+        const pullingDown = event.touches[0].clientY - touchStartY > 8;
+        if (atTop && pullingDown) event.preventDefault();
+      }, { passive: false });
+    }
+
     async function initializeTool() {
+      installPullToRefreshGuard();
       loadCloudSyncKey();
       await restoreCloudStateFromServer({ overwrite: false });
       loadApiKeys();
