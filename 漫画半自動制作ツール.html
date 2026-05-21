@@ -1235,12 +1235,6 @@
 <body data-tool-view="home">
   <header>
     <h1>Umbrella Parade 漫画半自動制作ツール</h1>
-    <div class="actions">
-      <button id="generate">出力を更新</button>
-      <button id="copyCurrent" class="secondary">出力欄をコピー</button>
-      <button id="downloadMd" class="secondary">Obsidianカード保存</button>
-      <button id="resetForm" class="warn">入力欄リセット</button>
-    </div>
   </header>
 
   <div class="api-bar">
@@ -1296,6 +1290,16 @@
           <li>スマホでURLを開いて同じパスワードを入力し「クラウドから読込」</li>
         </ol>
         <span id="syncKeyBrowserStatus"></span>
+      </div>
+    </details>
+    <details id="toolUtilityPanel" style="margin-top:10px;border:1px solid #ddd;border-radius:6px;padding:8px 12px;background:#fff;">
+      <summary style="cursor:pointer;font-weight:bold;">管理・補助メニュー</summary>
+      <p class="hint" style="margin:8px 0;">普段は使わない補助ボタンです。必要な時だけ開いて使います。</p>
+      <div class="actions">
+        <button id="generate" type="button">出力を更新</button>
+        <button id="copyCurrent" class="secondary" type="button">出力欄をコピー</button>
+        <button id="downloadMd" class="secondary" type="button">Obsidianカード保存</button>
+        <button id="resetForm" class="warn" type="button">入力欄リセット</button>
       </div>
     </details>
   </div>
