@@ -518,6 +518,19 @@
       line-height: 1.35;
       overflow-wrap: anywhere;
     }
+    .home-character-select {
+      width: 100%;
+      min-height: 42px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+      color: var(--ink);
+      font: inherit;
+      font-size: 17px;
+      font-weight: 900;
+      cursor: pointer;
+    }
     .home-card-note {
       color: var(--muted);
       font-size: 12px;
@@ -1363,7 +1376,13 @@
       <div class="home-card-grid">
         <div class="home-card">
           <div class="home-card-label">選択中キャラ</div>
-          <div id="homeSelectedCharacter" class="home-card-value">-</div>
+          <select id="homeCharacterSelect" class="home-character-select" aria-label="ホームでキャラクターを選択">
+            <option>ヴェル13世</option>
+            <option>カーラ・マンソン</option>
+            <option>べるぼ</option>
+            <option>アマモリ</option>
+            <option>アマヨミ</option>
+          </select>
           <div id="homeCharacterNote" class="home-card-note">キャラ設定を確認中</div>
         </div>
         <div class="home-card">
@@ -6655,7 +6674,9 @@ ${text}`;
       const wpSettings = wordpressSettingsForCharacter ? wordpressSettingsForCharacter(character) : {};
       const xToken = getXAccessTokenForCharacter ? getXAccessTokenForCharacter(character) : "";
 
-      setHomeText("homeSelectedCharacter", character);
+      if ($("homeCharacterSelect") && $("homeCharacterSelect").value !== character) {
+        $("homeCharacterSelect").value = character;
+      }
       setHomeText("homeCharacterNote", characterData[character] ? "プリセットあり" : "プリセット未確認");
       setHomeText("homeNextSchedule", `${date} ${time}${scheduleWarning}`);
       setHomeText("homeUnmadeCount", `${unmadeCount}件`);
@@ -12017,8 +12038,9 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       if (val("scheduledTime")) saveScheduledTimeForCharacter(activeScheduleCharacter || val("character") || "ヴェル13世", val("scheduledTime"));
     });
     $("calendarMonth").addEventListener("change", renderCalendar);
-    $("character").addEventListener("change", async () => {
-      const character = setActiveCharacter(val("character") || "ヴェル13世");
+
+    async function switchActiveCharacter(characterName, showMessage = true) {
+      const character = setActiveCharacter(characterName || "ヴェル13世");
       saveSubCharacterSelection(activeScheduleCharacter || "ヴェル13世");
       saveSnsTextSettings(activeSnsSettingsCharacter || activeScheduleCharacter || "ヴェル13世");
       saveScheduledDateForCharacter(activeScheduleCharacter || character);
@@ -12042,9 +12064,21 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       loadImageDownloadNameConfig(character);
       loadImageDownloadFolder(character);
       render();
-      $("statusText").textContent = `${character}専用のテンプレートと保存画像セットを自動でセットしました。`;
-      setTimeout(() => $("statusText").textContent = "", 2200);
+      if (showMessage && $("statusText")) {
+        $("statusText").textContent = `${character}専用のテンプレートと保存画像セットを自動でセットしました。`;
+        setTimeout(() => $("statusText").textContent = "", 2200);
+      }
+      return character;
+    }
+
+    $("character").addEventListener("change", async () => {
+      await switchActiveCharacter(val("character") || "ヴェル13世", true);
     });
+    if ($("homeCharacterSelect")) {
+      $("homeCharacterSelect").addEventListener("change", async () => {
+        await switchActiveCharacter($("homeCharacterSelect").value || "ヴェル13世", false);
+      });
+    }
     checks.forEach((id) => $(id).addEventListener("change", render));
     $("generate").addEventListener("click", render);
     $("applyPreset").addEventListener("click", applyPreset);
