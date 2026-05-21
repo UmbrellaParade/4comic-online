@@ -1119,6 +1119,7 @@
             <textarea id="manualIdeaSeed" rows="5" placeholder="例：この投稿で伝えたいこと、キャラに言わせたい葛藤、漫画にしたい出来事などを書く"></textarea>
           </label>
           <div class="actions">
+            <button id="applyManualIdeaSeed" class="secondary" type="button">指定内容を各欄に反映</button>
             <button id="manualGenerateIdea" class="generate-ai-btn" type="button">✍ 指定内容からネタ生成</button>
           </div>
         </div>
@@ -5437,10 +5438,10 @@ ${speakerGuide}
           }
         : d.character === "べるぼ"
           ? {
-              area: "Belbo AI creation log logo area on the RIGHT side.",
-              visibleText: "べるぼ or Noise In My Soul / AI creation log logo text",
-              instruction: "- For Belbo, use a simple neon creator-log sign such as 「べるぼ」 or 「AI創作ログ」 on the final panel. Do not use Carla Manson or Vel 13th series branding.",
-              finalCopy: d.info.final
+              area: "Belbo creator log logo area on the RIGHT side.",
+              visibleText: "べるぼの制作ログ",
+              instruction: "- For Belbo, use a simple neon creator-log sign that reads exactly 「べるぼの制作ログ」 on the final panel. Do not use 「AI創作ログ」, Carla Manson branding, or Vel 13th series branding.",
+              finalCopy: "べるぼの制作ログ"
             }
           : {
               area: "Umbrella Parade logo area on the RIGHT side.",
@@ -5467,7 +5468,11 @@ ${speakerGuide}
 
 `;
       const panelLayoutBlock = `Critical four-panel layout rules. Follow these before style, background, and effects:
-- Use exactly four stacked horizontal panels in one vertical 9:16 image.
+- Use one vertical 9:16 image with a dedicated title header at the very top, then exactly four stacked horizontal panels below it.
+- The title header is mandatory. Do not omit it, crop it, merge it into panel 1, or replace it with background decoration.
+- Top title header layout: large visible title text 「${d.title}」 on the first line, and visible subtitle text 「${d.subtitle || ""}」 directly below it in smaller but still readable text.
+- Keep the title and subtitle readable on a smartphone. If space is tight, simplify decoration, not the title header.
+- For Carla Manson episodes, the top title header must remain visible above the rose-pink first panel.
 - Do not place all speech bubbles on the same side.
 - Panel 1: character on the LEFT side, speech bubble on the RIGHT side. Weak expression, hesitation.
 - Panel 2: character on the RIGHT side, speech bubble on the LEFT side. Leave more empty space than panel 1.
@@ -5480,10 +5485,12 @@ ${speakerGuide}
 - Use short, extra-large, readable Japanese text. If text becomes too crowded, use fewer words rather than shrinking text.
 
 On-image text whitelist:
-- The only text that may appear inside the manga image is: title, subtitle, the four panel dialogue lines, the final copy, and ${logoProfile.visibleText}.
+- The only text that may appear inside the manga image is: the top title, the top subtitle, the four panel visible dialogue lines, the final copy, and ${logoProfile.visibleText}.
 - Never draw production notes as visible text.
 - Never write labels or content for Theme, Aim, memo, notes, prompt instructions, hashtags, or file paths inside the manga image.
 - Do not place explanatory theme text under the title or subtitle.
+- If a panel contains 「場面：」 and 「セリフ：」, use 「場面：」 only as visual direction and render only the words after 「セリフ：」 inside the speech bubble.
+- Never render the labels 「場面」, 「シーン」, 「描写」, 「セリフ」, or 「台詞」 as visible text.
 - Do not write words such as 「テーマ」, 「Theme」, 「狙い」, 「Aim」, 「メモ」, or 「コンセプト」 anywhere in the artwork.
 
 ${carlaColorBlock}`;
@@ -5517,10 +5524,10 @@ Visible subtitle text: 「${d.subtitle || ""}」
 The production theme and aim are stored inside the tool only.
 Do not render, quote, summarize, or visually write the theme or aim text anywhere in the manga image.
 
-Panel 1 visible dialogue: ${d.p1 || ""}
-Panel 2 visible dialogue: ${d.p2 || ""}
-Panel 3 visible dialogue: ${d.p3 || ""}
-Panel 4 visible dialogue: ${d.p4 || ""}
+${panelPromptLines(1, d.p1)}
+${panelPromptLines(2, d.p2)}
+${panelPromptLines(3, d.p3)}
+${panelPromptLines(4, d.p4)}
 
 Dialogue speaker handling:
 - Treat any character name before a colon or Japanese quote as speaker metadata for bubble placement.
@@ -12491,6 +12498,111 @@ ${JSON.stringify({
       return [d.title, d.subtitle].filter(Boolean).join("\n").trim();
     }
 
+    function cleanManualStructuredValue(value) {
+      return String(value || "")
+        .replace(/\r/g, "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .join("\n")
+        .trim();
+    }
+
+    function manualStructuredBoundary() {
+      return "(?=\\n\\s*(?:タイトル|サブコピー|副題|テーマ|狙い|目的|1\\s*コマ目|2\\s*コマ目|3\\s*コマ目|4\\s*コマ目|第\\s*[一二三四１２３４1-4]\\s*コマ|[一二三四１２３４1-4]\\s*コマ)\\s*[:：]|$)";
+    }
+
+    function extractManualLabeledValue(text, labels) {
+      const pattern = labels.join("|");
+      const regex = new RegExp(`(?:^|\\n)\\s*(?:${pattern})\\s*[:：]\\s*([\\s\\S]*?)${manualStructuredBoundary()}`);
+      const match = String(text || "").match(regex);
+      return match ? cleanManualStructuredValue(match[1]) : "";
+    }
+
+    function manualPanelLabelPattern(panelNumber) {
+      const kanji = ["", "一", "二", "三", "四"][panelNumber] || panelNumber;
+      const fullWidth = ["", "１", "２", "３", "４"][panelNumber] || panelNumber;
+      return `(?:${panelNumber}|${fullWidth}|${kanji})\\s*コマ目|(?:${panelNumber}|${fullWidth}|${kanji})\\s*コマ|第\\s*(?:${panelNumber}|${fullWidth}|${kanji})\\s*コマ`;
+    }
+
+    function extractManualPanelBlock(text, panelNumber) {
+      const regex = new RegExp(`(?:^|\\n)\\s*(?:${manualPanelLabelPattern(panelNumber)})\\s*[:：]\\s*([\\s\\S]*?)${manualStructuredBoundary()}`);
+      const match = String(text || "").match(regex);
+      return match ? cleanManualStructuredValue(match[1]) : "";
+    }
+
+    function normalizeManualPanelBlock(block) {
+      const cleaned = cleanManualStructuredValue(block);
+      if (!cleaned) return "";
+      const speechMatch = cleaned.match(/(?:^|\n)\s*(?:セリフ|台詞|せりふ)\s*[:：]\s*([\s\S]*)/);
+      if (!speechMatch) return cleaned;
+      const scene = cleanManualStructuredValue(cleaned.slice(0, speechMatch.index))
+        .replace(/^(?:場面|シーン|描写)\s*[:：]\s*/, "")
+        .trim();
+      const speech = cleanManualStructuredValue(speechMatch[1]);
+      return [
+        scene ? `場面：${scene}` : "",
+        speech ? `セリフ：${speech}` : ""
+      ].filter(Boolean).join("\n");
+    }
+
+    function parseManualIdeaSeedFields(text) {
+      const source = String(text || "").replace(/\r/g, "");
+      return {
+        title: extractManualLabeledValue(source, ["タイトル", "題名"]),
+        subtitle: extractManualLabeledValue(source, ["サブコピー", "副題"]),
+        theme: extractManualLabeledValue(source, ["テーマ"]),
+        aim: extractManualLabeledValue(source, ["狙い", "目的"]),
+        p1: normalizeManualPanelBlock(extractManualPanelBlock(source, 1)),
+        p2: normalizeManualPanelBlock(extractManualPanelBlock(source, 2)),
+        p3: normalizeManualPanelBlock(extractManualPanelBlock(source, 3)),
+        p4: normalizeManualPanelBlock(extractManualPanelBlock(source, 4))
+      };
+    }
+
+    function panelSceneAndSpeech(value) {
+      const raw = cleanManualStructuredValue(value);
+      if (!raw) return { scene: "", speech: "" };
+      const speechMatch = raw.match(/(?:^|\n)\s*(?:セリフ|台詞|せりふ)\s*[:：]\s*([\s\S]*)/);
+      if (!speechMatch) return { scene: "", speech: raw };
+      const scene = cleanManualStructuredValue(raw.slice(0, speechMatch.index))
+        .replace(/^(?:場面|シーン|描写)\s*[:：]\s*/, "")
+        .trim();
+      const speech = cleanManualStructuredValue(speechMatch[1]);
+      return { scene, speech };
+    }
+
+    function panelPromptLines(panelNumber, value) {
+      const split = panelSceneAndSpeech(value);
+      if (!split.scene) return `Panel ${panelNumber} visible dialogue: ${split.speech || ""}`;
+      return `Panel ${panelNumber} visual scene: ${split.scene}
+Panel ${panelNumber} visible dialogue: ${split.speech || ""}`;
+    }
+
+    function applyManualIdeaSeedToFields() {
+      const source = $("manualIdeaSeed") ? val("manualIdeaSeed") : "";
+      if (!source.trim()) {
+        alert("指定内容を入力してください。");
+        return;
+      }
+      const parsed = parseManualIdeaSeedFields(source);
+      let count = 0;
+      ["title", "subtitle", "theme", "aim", "p1", "p2", "p3", "p4"].forEach((id) => {
+        const value = parsed[id];
+        if (value && $(id)) {
+          $(id).value = value;
+          count += 1;
+        }
+      });
+      if (!count) {
+        setStatus("タイトル、サブコピー、テーマ、狙い、1〜4コマ目の見出しが見つかりませんでした。", 3200);
+        return;
+      }
+      saveActiveIdeaDraft();
+      render();
+      setStatus(`指定内容を${count}項目に反映しました。必要ならこのまま画像生成へ進めます。`, 3200);
+    }
+
     async function autoGenerate(options = {}) {
       const manualMode = options.manualMode === true;
       const manualIdeaSeed = $("manualIdeaSeed") ? val("manualIdeaSeed").trim() : "";
@@ -12580,6 +12692,7 @@ ${JSON.stringify({
     }
 
     $("autoGenerate").addEventListener("click", autoGenerate);
+    $("applyManualIdeaSeed").addEventListener("click", applyManualIdeaSeedToFields);
     $("manualGenerateIdea").addEventListener("click", () => autoGenerate({ manualMode: true }));
     $("reGenerate").addEventListener("click", autoGenerate);
 
