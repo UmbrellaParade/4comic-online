@@ -207,10 +207,13 @@ function sendVaultBrowserHtml(res) {
     .controls { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
     .nav-controls { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
     .nav-controls button { min-height: 34px; padding: 6px 10px; }
+    .file-controls { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.08); }
+    .file-controls button { min-height: 34px; padding: 6px 10px; }
     input, button { min-height: 40px; border: 1px solid var(--line); border-radius: 8px; background: #0f1020; color: var(--text); padding: 8px 10px; font-size: 14px; }
     button { cursor: pointer; background: #24243a; }
     button:disabled { cursor: default; opacity: .45; }
     button.primary { background: var(--accent); color: #170511; border-color: var(--accent); font-weight: 700; }
+    button.danger { background: #3a1720; color: #fecdd3; border-color: #7f1d1d; }
     main { padding: 14px; max-width: 1120px; margin: 0 auto; }
     .path { color: var(--muted); font-size: 13px; margin: 8px 0 14px; word-break: break-all; }
     .breadcrumbs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
@@ -219,6 +222,9 @@ function sendVaultBrowserHtml(res) {
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
     .item { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 10px; min-height: 104px; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
     .item button { width: 100%; text-align: left; background: transparent; border: 0; padding: 0; min-height: 0; color: var(--text); }
+    .item-actions { display: flex; gap: 6px; margin-top: 2px; }
+    .item-actions button { width: auto; min-height: 30px; padding: 4px 8px; border: 1px solid var(--line); background: #202036; font-size: 12px; text-align: center; }
+    .item-actions button.danger { border-color: #7f1d1d; background: #3a1720; color: #fecdd3; }
     .thumb { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 6px; background: #080812; border: 1px solid var(--line); }
     .name { font-size: 13px; overflow-wrap: anywhere; line-height: 1.35; }
     .meta { color: var(--muted); font-size: 11px; margin-top: auto; }
@@ -227,6 +233,7 @@ function sendVaultBrowserHtml(res) {
     @media (max-width: 640px) {
       .controls { grid-template-columns: 1fr; }
       .nav-controls { display: grid; grid-template-columns: repeat(3, 1fr); }
+      .file-controls { display: grid; grid-template-columns: 1fr 1fr; }
       .grid { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
       header { padding: 12px; }
       main { padding: 10px; }
@@ -246,6 +253,11 @@ function sendVaultBrowserHtml(res) {
       <button id="upPath" type="button">ひとつ上</button>
       <button id="rootPath" type="button">トップ</button>
     </div>
+    <div class="file-controls">
+      <button id="createFolder" type="button">フォルダー作成</button>
+      <button id="uploadFile" type="button">ファイル追加</button>
+      <input id="uploadFileInput" type="file" multiple hidden>
+    </div>
     <div id="status" class="status">同期キーを入れて表示更新を押してください。</div>
   </header>
   <main>
@@ -264,6 +276,9 @@ function sendVaultBrowserHtml(res) {
     const historyBackButton = document.getElementById("historyBack");
     const upPathButton = document.getElementById("upPath");
     const rootPathButton = document.getElementById("rootPath");
+    const createFolderButton = document.getElementById("createFolder");
+    const uploadFileButton = document.getElementById("uploadFile");
+    const uploadFileInput = document.getElementById("uploadFileInput");
     keyInput.value = localStorage.getItem(KEY_STORAGE) || "";
     state.path = new URLSearchParams(location.search).get("path") || "";
     document.getElementById("saveKey").addEventListener("click", () => {
@@ -271,6 +286,9 @@ function sendVaultBrowserHtml(res) {
       setStatus("同期キーを保存しました。");
     });
     document.getElementById("reload").addEventListener("click", () => loadPath(state.path, false));
+    createFolderButton.addEventListener("click", createFolderInCurrentPath);
+    uploadFileButton.addEventListener("click", () => uploadFileInput.click());
+    uploadFileInput.addEventListener("change", uploadFilesToCurrentPath);
     historyBackButton.addEventListener("click", () => {
       if (history.length > 1) history.back();
       else loadPath(parentPath(state.path));
@@ -288,6 +306,16 @@ function sendVaultBrowserHtml(res) {
     function authHeaders() {
       const key = keyInput.value.trim() || localStorage.getItem(KEY_STORAGE) || "";
       return key ? { "X-Umbrella-Sync-Key": key } : {};
+    }
+    async function postJson(url, payload) {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(payload || {})
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) throw new Error(json.error || "処理に失敗しました。");
+      return json;
     }
     function joinPath(base, name) {
       return [base, name].filter(Boolean).join("/").replace(/\\/+/g, "/");
@@ -340,6 +368,56 @@ function sendVaultBrowserHtml(res) {
       if (n > 1024) return (n / 1024).toFixed(1) + " KB";
       return n + " B";
     }
+    function fileToDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error || new Error("ファイルを読み込めませんでした。"));
+        reader.readAsDataURL(file);
+      });
+    }
+    async function createFolderInCurrentPath() {
+      const name = prompt("作成するフォルダー名を入力してください。");
+      if (!name || !name.trim()) return;
+      try {
+        setStatus("フォルダーを作成中です...");
+        await postJson("/vault-create-folder", { path: state.path, name: name.trim() });
+        await loadPath(state.path, false);
+        setStatus("フォルダーを作成しました。");
+      } catch (error) {
+        setStatus(error.message || String(error), true);
+      }
+    }
+    async function uploadFilesToCurrentPath(event) {
+      const files = Array.from((event.target && event.target.files) || []);
+      uploadFileInput.value = "";
+      if (!files.length) return;
+      try {
+        for (let index = 0; index < files.length; index += 1) {
+          const file = files[index];
+          setStatus("ファイル追加中です... " + (index + 1) + "/" + files.length + " " + file.name);
+          const dataUrl = await fileToDataUrl(file);
+          await postJson("/vault-upload-file", { path: state.path, name: file.name, dataUrl });
+        }
+        await loadPath(state.path, false);
+        setStatus(files.length + "件のファイルを追加しました。");
+      } catch (error) {
+        setStatus(error.message || String(error), true);
+      }
+    }
+    async function deleteVaultEntry(entry) {
+      if (!entry || !entry.path) return;
+      const label = entry.type === "directory" ? "フォルダー" : "ファイル";
+      if (!confirm(label + "「" + entry.name + "」を削除しますか？\\nこの操作は元に戻せません。")) return;
+      try {
+        setStatus("削除中です...");
+        await postJson("/vault-delete", { path: entry.path });
+        await loadPath(state.path, false);
+        setStatus(label + "を削除しました。");
+      } catch (error) {
+        setStatus(error.message || String(error), true);
+      }
+    }
     async function loadPath(path = "", push = true) {
       state.path = path || "";
       pathLabel.textContent = "/" + state.path;
@@ -364,13 +442,13 @@ function sendVaultBrowserHtml(res) {
       }
       for (const entry of json.entries || []) {
         if (entry.type === "directory") {
-          grid.appendChild(createNavItem(entry.name, "folder", () => loadPath(entry.path), "フォルダー"));
+          grid.appendChild(createNavItem(entry.name, "folder", () => loadPath(entry.path), "フォルダー", entry));
         } else {
           grid.appendChild(createFileItem(entry));
         }
       }
     }
-    function createNavItem(name, type, onClick, meta) {
+    function createNavItem(name, type, onClick, meta, entry = null) {
       const cell = document.createElement("div");
       cell.className = "item";
       const button = document.createElement("button");
@@ -381,6 +459,20 @@ function sendVaultBrowserHtml(res) {
       m.className = "meta";
       m.textContent = meta || "";
       cell.append(button, m);
+      if (entry) {
+        const actions = document.createElement("div");
+        actions.className = "item-actions";
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "danger";
+        del.textContent = "削除";
+        del.addEventListener("click", (event) => {
+          event.stopPropagation();
+          deleteVaultEntry(entry);
+        });
+        actions.appendChild(del);
+        cell.appendChild(actions);
+      }
       return cell;
     }
     function createFileItem(entry) {
@@ -400,7 +492,18 @@ function sendVaultBrowserHtml(res) {
       const meta = document.createElement("div");
       meta.className = "meta";
       meta.textContent = formatBytes(entry.size) + " / " + (entry.modifiedAt || "");
-      cell.append(button, meta);
+      const actions = document.createElement("div");
+      actions.className = "item-actions";
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "danger";
+      del.textContent = "削除";
+      del.addEventListener("click", (event) => {
+        event.stopPropagation();
+        deleteVaultEntry(entry);
+      });
+      actions.appendChild(del);
+      cell.append(button, meta, actions);
       return cell;
     }
     async function loadImageBlob(path, img) {
@@ -528,6 +631,111 @@ function sendVaultFile(req, res, requestUrl) {
     "Cache-Control": "private, no-store"
   });
   fs.createReadStream(fullPath).pipe(res);
+}
+
+function safeVaultEntryName(rawName = "") {
+  const cleaned = String(rawName || "").trim().replace(/[<>:"|?*]/g, "");
+  if (!cleaned) {
+    const error = new Error("名前が空です。");
+    error.status = 400;
+    throw error;
+  }
+  if (cleaned.includes("/") || cleaned.includes("\\") || cleaned.includes("\0") || cleaned.includes("..")) {
+    const error = new Error("名前に使えない文字が含まれています。");
+    error.status = 400;
+    throw error;
+  }
+  return cleaned;
+}
+
+function safeVaultChildPath(parentPath = "", rawName = "") {
+  const parent = safeVaultFilePath(parentPath);
+  if (!fs.existsSync(parent.fullPath) || !fs.statSync(parent.fullPath).isDirectory()) {
+    const error = new Error("追加先フォルダーが見つかりません。");
+    error.status = 404;
+    throw error;
+  }
+  const name = safeVaultEntryName(rawName);
+  return safeVaultFilePath([parent.relativePath, name].filter(Boolean).join("/"));
+}
+
+function uniqueVaultFilePath(target) {
+  if (!fs.existsSync(target.fullPath)) return target;
+  const dir = path.dirname(target.fullPath);
+  const ext = path.extname(target.fullPath);
+  const base = path.basename(target.fullPath, ext);
+  for (let index = 2; index <= 999; index += 1) {
+    const candidate = path.join(dir, `${base}-${index}${ext}`);
+    if (!fs.existsSync(candidate)) {
+      return {
+        fullPath: candidate,
+        relativePath: path.relative(path.resolve(VAULT_ROOT), candidate).replace(/\\/g, "/")
+      };
+    }
+  }
+  const error = new Error("同じ名前のファイルが多すぎます。名前を変えて追加してください。");
+  error.status = 409;
+  throw error;
+}
+
+function createVaultFolder(payload = {}) {
+  const target = safeVaultChildPath(payload.path, payload.name);
+  if (fs.existsSync(target.fullPath)) {
+    const error = new Error("同じ名前のフォルダーまたはファイルがすでにあります。");
+    error.status = 409;
+    throw error;
+  }
+  fs.mkdirSync(target.fullPath, { recursive: false });
+  return { path: target.relativePath };
+}
+
+function uploadVaultFile(payload = {}) {
+  if (!payload.dataUrl) {
+    const error = new Error("追加するファイルデータがありません。");
+    error.status = 400;
+    throw error;
+  }
+  const { mimeType, buffer } = dataUrlToMediaBuffer(payload.dataUrl);
+  const target = uniqueVaultFilePath(safeVaultChildPath(payload.path, payload.name || `upload-${Date.now()}`));
+  withFileRetry(() => fs.writeFileSync(target.fullPath, buffer), "vault-upload-file", target.fullPath);
+  return {
+    path: target.relativePath,
+    name: path.basename(target.fullPath),
+    mimeType,
+    bytes: buffer.length
+  };
+}
+
+function deleteVaultEntry(payload = {}) {
+  const target = safeVaultFilePath(payload.path);
+  if (!target.relativePath) {
+    const error = new Error("Vaultのトップは削除できません。");
+    error.status = 400;
+    throw error;
+  }
+  if (!fs.existsSync(target.fullPath)) {
+    const error = new Error("削除対象が見つかりません。");
+    error.status = 404;
+    throw error;
+  }
+  const stat = fs.statSync(target.fullPath);
+  if (stat.isDirectory()) {
+    const entries = fs.readdirSync(target.fullPath);
+    if (entries.length) {
+      const error = new Error("中身があるフォルダーは削除できません。先に中のファイルを削除してください。");
+      error.status = 400;
+      throw error;
+    }
+    fs.rmdirSync(target.fullPath);
+    return { path: target.relativePath, type: "directory" };
+  }
+  if (!stat.isFile()) {
+    const error = new Error("この種類の項目は削除できません。");
+    error.status = 400;
+    throw error;
+  }
+  withFileRetry(() => fs.rmSync(target.fullPath, { force: true }), "vault-delete-file", target.fullPath);
+  return { path: target.relativePath, type: "file" };
 }
 
 function readJsonFile(filePath, fallback) {
@@ -3235,6 +3443,45 @@ const server = http.createServer(async (req, res) => {
     } catch (error) {
       rememberError(error, { route: "/vault-file" });
       sendJson(res, error.status || 500, { ok: false, error: error.message || "Vault file error." });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && requestUrl.pathname === "/vault-create-folder") {
+    try {
+      ensureVaultAccess(req, requestUrl);
+      const payload = JSON.parse(await readBody(req) || "{}");
+      const folder = createVaultFolder(payload);
+      sendJson(res, 200, { ok: true, folder });
+    } catch (error) {
+      rememberError(error, { route: "/vault-create-folder" });
+      sendJson(res, error.status || 500, { ok: false, error: error.message || "Vault folder create error." });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && requestUrl.pathname === "/vault-upload-file") {
+    try {
+      ensureVaultAccess(req, requestUrl);
+      const payload = JSON.parse(await readBody(req) || "{}");
+      const file = uploadVaultFile(payload);
+      sendJson(res, 200, { ok: true, file });
+    } catch (error) {
+      rememberError(error, { route: "/vault-upload-file" });
+      sendJson(res, error.status || 500, { ok: false, error: error.message || "Vault file upload error." });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && requestUrl.pathname === "/vault-delete") {
+    try {
+      ensureVaultAccess(req, requestUrl);
+      const payload = JSON.parse(await readBody(req) || "{}");
+      const deleted = deleteVaultEntry(payload);
+      sendJson(res, 200, { ok: true, deleted });
+    } catch (error) {
+      rememberError(error, { route: "/vault-delete" });
+      sendJson(res, error.status || 500, { ok: false, error: error.message || "Vault delete error." });
     }
     return;
   }
