@@ -11721,6 +11721,13 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       }
 
       try {
+        await refreshServerImportDirectoryState(character, false);
+        if (openServerImportImageGallery(character)) return;
+      } catch (error) {
+        console.warn("VPSのObsidian画像フォルダーを開けませんでした。", error);
+      }
+
+      try {
         const opened = await openBrowserImportImageGallery(character, false);
         if (opened) return;
       } catch (error) {

@@ -670,10 +670,24 @@ function writeImportDirectories(map) {
   writeJsonFile(IMPORT_DIRS_PATH, map || {});
 }
 
+function defaultImportDirectoryForCharacter(character) {
+  const map = {
+    "ヴェル13世": ["Umbrella Parade", "漫画", "01_ヴェル13世", "画像"],
+    "カーラ・マンソン": ["Umbrella Parade", "漫画", "02_カーラ・マンソン", "画像"],
+    "べるぼ": ["Umbrella Parade", "漫画", "03_べるぼ", "画像"],
+    "アマモリ": ["Umbrella Parade", "漫画", "05_アマモリ", "画像"],
+    "アマヨミ": ["Umbrella Parade", "漫画", "06_アマヨミ", "画像"]
+  };
+  const parts = map[String(character || "").trim()];
+  if (!parts) return "";
+  const folder = path.join(VAULT_ROOT, ...parts);
+  return fs.existsSync(folder) ? folder : "";
+}
+
 function importDirectoryForCharacter(character) {
   const map = readImportDirectories();
   const folder = String(map[String(character || "")] || "").trim();
-  return folder && fs.existsSync(folder) ? folder : "";
+  return folder && fs.existsSync(folder) ? folder : defaultImportDirectoryForCharacter(character);
 }
 
 function mediaTypeFromImageName(name) {
@@ -720,31 +734,51 @@ function listImportImages(character) {
   const folder = importDirectoryForCharacter(character);
   if (!folder) return { folder: "", images: [] };
   const allowed = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
-  const images = fs.readdirSync(folder, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && allowed.has(path.extname(entry.name).toLowerCase()))
-    .map((entry) => {
-      const fullPath = path.join(folder, entry.name);
+  const images = [];
+  const root = path.resolve(folder);
+  const stack = [{ dir: root, depth: 0 }];
+  while (stack.length) {
+    const { dir, depth } = stack.pop();
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (depth < 4) stack.push({ dir: fullPath, depth: depth + 1 });
+        continue;
+      }
+      if (!entry.isFile() || !allowed.has(path.extname(entry.name).toLowerCase())) continue;
       const stat = fs.statSync(fullPath);
-      return {
-        name: entry.name,
+      const relativeName = path.relative(root, fullPath).replace(/\\/g, "/");
+      images.push({
+        name: relativeName,
+        displayName: entry.name,
         size: stat.size,
         modifiedAt: stat.mtime.toISOString(),
         modifiedMs: stat.mtimeMs,
         mediaType: mediaTypeFromImageName(entry.name)
-      };
-    })
-    .sort((a, b) => b.modifiedMs - a.modifiedMs);
+      });
+    }
+  }
+  images.sort((a, b) => b.modifiedMs - a.modifiedMs);
   return { folder, images };
 }
 
 function safeImportImagePath(character, imageName) {
   const folder = importDirectoryForCharacter(character);
   if (!folder) throw new Error("Import directory is not set.");
-  const baseName = path.basename(String(imageName || ""));
-  if (!baseName) throw new Error("Image name is empty.");
+  const safeName = String(imageName || "")
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .trim();
+  if (!safeName || safeName.includes("..")) throw new Error("Image name is empty.");
   const resolvedFolder = path.resolve(folder);
-  const fullPath = path.resolve(resolvedFolder, baseName);
-  if (!fullPath.startsWith(`${resolvedFolder}${path.sep}`)) {
+  const fullPath = path.resolve(resolvedFolder, safeName);
+  if (fullPath !== resolvedFolder && !fullPath.startsWith(`${resolvedFolder}${path.sep}`)) {
     throw new Error("Invalid image path.");
   }
   if (!fs.existsSync(fullPath)) throw new Error("Image file was not found.");
