@@ -4412,7 +4412,7 @@
       saveCharacterImageSet(false);
       updateRuntimeImageStatus();
       $("statusText").textContent = savedToServer
-        ? `${character}に画像を${images.length}枚追加し、Railway側に保存しました。${firstImage ? "キャラ参考画像にもセットしました。" : ""}`
+        ? `${character}に画像を${images.length}枚追加し、オンライン側に保存しました。${firstImage ? "キャラ参考画像にもセットしました。" : ""}`
         : `${character}に画像を${images.length}枚追加し、このブラウザ内に保存しました。${firstImage ? "キャラ参考画像にもセットしました。" : ""}`;
       setTimeout(() => $("statusText").textContent = "", 3000);
     }
@@ -4477,7 +4477,7 @@
       const serverCount = list.filter((image) => image.serverPersisted).length;
       const browserCount = list.length - serverCount;
       $("runtimeImageStatus").textContent = list.length
-        ? `${character}：追加読み込み画像 ${list.length}枚（Railway ${serverCount} / ブラウザ ${browserCount}）`
+        ? `${character}：追加読み込み画像 ${list.length}枚（オンライン ${serverCount} / ブラウザ ${browserCount}）`
         : `${character}：追加読み込み画像なし`;
     }
 
