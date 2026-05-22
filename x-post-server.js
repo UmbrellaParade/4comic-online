@@ -205,11 +205,17 @@ function sendVaultBrowserHtml(res) {
     header { position: sticky; top: 0; z-index: 2; padding: 14px 16px; background: rgba(9,9,18,.96); border-bottom: 1px solid var(--line); backdrop-filter: blur(10px); }
     h1 { margin: 0 0 10px; font-size: 18px; letter-spacing: 0; }
     .controls { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
+    .nav-controls { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .nav-controls button { min-height: 34px; padding: 6px 10px; }
     input, button { min-height: 40px; border: 1px solid var(--line); border-radius: 8px; background: #0f1020; color: var(--text); padding: 8px 10px; font-size: 14px; }
     button { cursor: pointer; background: #24243a; }
+    button:disabled { cursor: default; opacity: .45; }
     button.primary { background: var(--accent); color: #170511; border-color: var(--accent); font-weight: 700; }
     main { padding: 14px; max-width: 1120px; margin: 0 auto; }
     .path { color: var(--muted); font-size: 13px; margin: 8px 0 14px; word-break: break-all; }
+    .breadcrumbs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+    .breadcrumbs button { min-height: 30px; padding: 4px 8px; font-size: 12px; background: #191a2c; }
+    .breadcrumbs span { color: var(--muted); align-self: center; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
     .item { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 10px; min-height: 104px; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
     .item button { width: 100%; text-align: left; background: transparent; border: 0; padding: 0; min-height: 0; color: var(--text); }
@@ -220,6 +226,7 @@ function sendVaultBrowserHtml(res) {
     .error { color: #fca5a5; }
     @media (max-width: 640px) {
       .controls { grid-template-columns: 1fr; }
+      .nav-controls { display: grid; grid-template-columns: repeat(3, 1fr); }
       .grid { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
       header { padding: 12px; }
       main { padding: 10px; }
@@ -234,10 +241,16 @@ function sendVaultBrowserHtml(res) {
       <button id="saveKey" type="button">キー保存</button>
       <button id="reload" class="primary" type="button">表示更新</button>
     </div>
+    <div class="nav-controls">
+      <button id="historyBack" type="button">← 戻る</button>
+      <button id="upPath" type="button">ひとつ上</button>
+      <button id="rootPath" type="button">トップ</button>
+    </div>
     <div id="status" class="status">同期キーを入れて表示更新を押してください。</div>
   </header>
   <main>
     <div class="path" id="pathLabel">/</div>
+    <div class="breadcrumbs" id="breadcrumbs"></div>
     <div class="grid" id="grid"></div>
   </main>
   <script>
@@ -247,12 +260,27 @@ function sendVaultBrowserHtml(res) {
     const statusEl = document.getElementById("status");
     const grid = document.getElementById("grid");
     const pathLabel = document.getElementById("pathLabel");
+    const breadcrumbs = document.getElementById("breadcrumbs");
+    const historyBackButton = document.getElementById("historyBack");
+    const upPathButton = document.getElementById("upPath");
+    const rootPathButton = document.getElementById("rootPath");
     keyInput.value = localStorage.getItem(KEY_STORAGE) || "";
+    state.path = new URLSearchParams(location.search).get("path") || "";
     document.getElementById("saveKey").addEventListener("click", () => {
       localStorage.setItem(KEY_STORAGE, keyInput.value.trim());
       setStatus("同期キーを保存しました。");
     });
-    document.getElementById("reload").addEventListener("click", () => loadPath(state.path));
+    document.getElementById("reload").addEventListener("click", () => loadPath(state.path, false));
+    historyBackButton.addEventListener("click", () => {
+      if (history.length > 1) history.back();
+      else loadPath(parentPath(state.path));
+    });
+    upPathButton.addEventListener("click", () => loadPath(parentPath(state.path)));
+    rootPathButton.addEventListener("click", () => loadPath(""));
+    window.addEventListener("popstate", (event) => {
+      const path = (event.state && event.state.path) || new URLSearchParams(location.search).get("path") || "";
+      loadPath(path, false);
+    });
     function setStatus(message, error = false) {
       statusEl.textContent = message || "";
       statusEl.className = "status" + (error ? " error" : "");
@@ -269,16 +297,55 @@ function sendVaultBrowserHtml(res) {
       parts.pop();
       return parts.join("/");
     }
+    function setLocationPath(path) {
+      const url = new URL(location.href);
+      if (path) url.searchParams.set("path", path);
+      else url.searchParams.delete("path");
+      const next = url.pathname + url.search + url.hash;
+      if (next !== location.pathname + location.search + location.hash) {
+        history.pushState({ path }, "", next);
+      }
+    }
+    function updateNavigation() {
+      const hasPath = !!state.path;
+      upPathButton.disabled = !hasPath;
+      rootPathButton.disabled = !hasPath;
+      renderBreadcrumbs();
+    }
+    function renderBreadcrumbs() {
+      breadcrumbs.innerHTML = "";
+      const rootButton = document.createElement("button");
+      rootButton.type = "button";
+      rootButton.textContent = "トップ";
+      rootButton.addEventListener("click", () => loadPath(""));
+      breadcrumbs.appendChild(rootButton);
+      const parts = String(state.path || "").split("/").filter(Boolean);
+      let current = "";
+      parts.forEach((part) => {
+        const sep = document.createElement("span");
+        sep.textContent = ">";
+        breadcrumbs.appendChild(sep);
+        current = current ? current + "/" + part : part;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = part;
+        const target = current;
+        button.addEventListener("click", () => loadPath(target));
+        breadcrumbs.appendChild(button);
+      });
+    }
     function formatBytes(size) {
       const n = Number(size || 0);
       if (n > 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + " MB";
       if (n > 1024) return (n / 1024).toFixed(1) + " KB";
       return n + " B";
     }
-    async function loadPath(path = "") {
+    async function loadPath(path = "", push = true) {
       state.path = path || "";
       pathLabel.textContent = "/" + state.path;
       grid.innerHTML = "";
+      updateNavigation();
+      if (push) setLocationPath(state.path);
       setStatus("読み込み中です...");
       try {
         const res = await fetch("/vault-list?path=" + encodeURIComponent(state.path), { headers: authHeaders() });
@@ -293,7 +360,7 @@ function sendVaultBrowserHtml(res) {
     function renderItems(json) {
       grid.innerHTML = "";
       if (json.path) {
-        grid.appendChild(createNavItem("..", "folder", () => loadPath(parentPath(json.path)), "上のフォルダーへ"));
+        grid.appendChild(createNavItem("ひとつ上へ", "folder", () => loadPath(parentPath(json.path)), "上のフォルダーへ戻る"));
       }
       for (const entry of json.entries || []) {
         if (entry.type === "directory") {
@@ -365,6 +432,7 @@ function sendVaultBrowserHtml(res) {
     function escapeHtml(value) {
       return String(value || "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
     }
+    loadPath(state.path, false);
   </script>
 </body>
 </html>`);
