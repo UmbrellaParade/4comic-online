@@ -18,13 +18,16 @@
       --warn: #9b4d2f;
       --ok: #2f6f4e;
       --shadow: 0 10px 24px rgba(26, 35, 40, 0.08);
+      --sticky-header-height: 68px;
+      --sticky-nav-height: 62px;
+      --sticky-scroll-offset: 150px;
     }
     * {
       box-sizing: border-box;
     }
     html {
       scroll-behavior: smooth;
-      scroll-padding-top: 88px;
+      scroll-padding-top: var(--sticky-scroll-offset);
       overscroll-behavior-y: none;
     }
     body {
@@ -45,7 +48,7 @@
       background: #050507;
       position: sticky;
       top: 0;
-      z-index: 10;
+      z-index: 40;
     }
     h1 {
       margin: 0;
@@ -76,10 +79,10 @@
     }
     .side-toc {
       position: fixed;
-      top: 132px;
+      top: calc(var(--sticky-header-height) + var(--sticky-nav-height) + 14px);
       left: 12px;
       width: 154px;
-      z-index: 8;
+      z-index: 20;
       display: grid;
       gap: 6px;
       padding: 10px;
@@ -94,6 +97,10 @@
       font-weight: 800;
       color: var(--muted);
     }
+    .side-toc-links {
+      display: grid;
+      gap: 4px;
+    }
     .side-toc a {
       display: block;
       padding: 7px 8px;
@@ -105,7 +112,8 @@
       text-decoration: none;
     }
     .side-toc a:hover,
-    .side-toc a:focus-visible {
+    .side-toc a:focus-visible,
+    .side-toc a.active {
       background: var(--panel-soft);
       color: var(--ink);
     }
@@ -154,6 +162,7 @@
       border-radius: 8px;
       box-shadow: var(--shadow);
       overflow: hidden;
+      scroll-margin-top: var(--sticky-scroll-offset);
     }
     .section-title {
       margin: 0;
@@ -307,8 +316,8 @@
     .api-status.err { color: var(--warn); }
     .app-mode-nav {
       position: sticky;
-      top: 68px;
-      z-index: 9;
+      top: var(--sticky-header-height);
+      z-index: 38;
       display: flex;
       gap: 8px;
       align-items: center;
@@ -317,6 +326,7 @@
       border-bottom: 1px solid var(--line);
       background: rgba(255, 255, 255, 0.96);
       backdrop-filter: blur(10px);
+      box-shadow: 0 8px 18px rgba(26, 35, 40, 0.08);
     }
     .app-mode-nav button {
       display: inline-flex;
@@ -337,6 +347,7 @@
       width: min(1400px, 100%);
       margin: 18px auto 0;
       padding: 0 18px;
+      scroll-margin-top: var(--sticky-scroll-offset);
     }
     .home-dashboard-inner {
       display: grid;
@@ -645,6 +656,7 @@
       padding: 12px;
       display: grid;
       gap: 10px;
+      scroll-margin-top: var(--sticky-scroll-offset);
     }
     .workflow-head {
       display: flex;
@@ -894,6 +906,7 @@
       padding: 12px;
       display: grid;
       gap: 10px;
+      scroll-margin-top: var(--sticky-scroll-offset);
     }
     .preset-head {
       display: flex;
@@ -1083,6 +1096,7 @@
     .subchar-section {
       display: grid;
       gap: 6px;
+      scroll-margin-top: var(--sticky-scroll-offset);
     }
     .subchar-title {
       font-size: 13px;
@@ -1274,7 +1288,7 @@
     </h1>
   </header>
 
-  <div class="api-bar">
+  <div class="api-bar" id="apiSettingsBar">
     <span class="api-label">現在使うAI
       <select id="aiProvider" class="hidden-provider-select" aria-label="AIプロバイダー">
         <option value="openai">OpenAI</option>
@@ -1357,7 +1371,7 @@
             <p class="home-kicker">今日の作業</p>
             <h2 class="home-title">次にやることを選んでください</h2>
             <p class="home-subtitle">キャラクター、ネタ、画像、投稿の状況をまとめて確認できます。</p>
-            <div class="home-action-row">
+            <div class="home-action-row" id="homeActions">
               <button type="button" data-tool-view-jump="idea">ネタを作る</button>
               <button type="button" data-tool-view-jump="image" class="secondary">画像を作る</button>
               <button type="button" data-tool-view-jump="post" class="generate-ai-btn">今すぐ投稿へ</button>
@@ -1375,7 +1389,7 @@
           </div>
         </div>
       </div>
-      <div class="home-card-grid">
+      <div class="home-card-grid" id="homeStatusCards">
         <div class="home-card">
           <div class="home-card-label">選択中キャラ</div>
           <select id="homeCharacterSelect" class="home-character-select" aria-label="ホームでキャラクターを選択">
@@ -1403,7 +1417,7 @@
           <div id="homeReservationCount" class="home-card-note">予約前 0件</div>
         </div>
       </div>
-      <div class="home-load-panel">
+      <div class="home-load-panel" id="homeLoadPanel">
         <div class="home-load-title">読み込み状況</div>
         <div class="home-load-grid">
           <div class="home-load-row"><span>キャラ設定</span><span id="homeLoadCharacter">確認中</span></div>
@@ -1419,14 +1433,7 @@
 
   <nav class="side-toc" aria-label="ツール目次">
     <div class="side-toc-title">目次</div>
-    <a href="#section-input">入力</a>
-    <a href="#characterPresetPanel">プリセット・画像</a>
-    <a href="#ideaStockPanel">ネタ台本</a>
-    <a href="#aiEditorPanel">AI編集者</a>
-    <a href="#mangaImageGenBox">漫画画像生成</a>
-    <a href="#preReservationStockPanel">予約前ストック</a>
-    <a href="#snsReservationPanel">SNS予約投稿</a>
-    <a href="#section-output">出力</a>
+    <div id="sideTocLinks" class="side-toc-links"></div>
   </nav>
   <button id="cloudSaveAll" class="cloud-save-all" type="button" title="全データをクラウドへ保存">☁️保存</button>
   <button id="backToTop" class="back-to-top" type="button" title="TOPに戻る">TOP</button>
@@ -1604,7 +1611,7 @@
           </div>
         </details>
 
-        <div class="workflow-box manual-idea-box">
+        <div class="workflow-box manual-idea-box" id="manualIdeaSeedPanel">
           <div class="workflow-head">
             <div class="workflow-title">ネタにしたい内容・想い</div>
           </div>
@@ -1930,7 +1937,7 @@
               </div>
             </div>
           </details>
-          <div class="subchar-section">
+          <div class="subchar-section" id="reservationScheduleSettingsPanel">
             <div class="subchar-title">予約投稿設定</div>
             <div class="grid cols">
               <label>予定日
@@ -2128,7 +2135,7 @@
               <div id="reservationActionStatus" class="image-status-line"></div>
             </div>
           </details>
-          <div class="grid cols">
+          <div class="grid cols" id="reservationCalendarPanel">
             <label>表示月
               <input id="calendarMonth" type="month">
             </label>
@@ -2140,7 +2147,7 @@
             <label><input id="calendarAllCharacters" type="checkbox" checked> カレンダーで全キャラクターを見る</label>
           </div>
           <div id="calendarGrid" class="calendar-grid"></div>
-          <div class="subchar-section">
+          <div class="subchar-section" id="reservationDateTimePanel">
             <div class="subchar-title">選択予約の日時変更</div>
             <p class="hint">予約リストで選んだ投稿の日時だけを、後から変更できます。</p>
             <div class="grid cols">
@@ -6604,6 +6611,51 @@ ${text}`;
 
     const TOOL_VIEW_KEY = "umbrellaMangaToolView";
     const TOOL_VIEWS = ["home", "idea", "image", "post", "settings"];
+    const SIDE_TOC_ITEMS = {
+      home: [
+        ["homeDashboard", "ホーム"],
+        ["homeActions", "作業ボタン"],
+        ["homeStatusCards", "状況カード"],
+        ["homeLoadPanel", "読み込み状況"]
+      ],
+      idea: [
+        ["workContextPanel", "キャラ選択"],
+        ["manualIdeaSeedPanel", "指定ネタ"],
+        ["ideaTitleFields", "タイトル"],
+        ["panelLinesFields", "4コマ台本"],
+        ["aiEditorPanel", "AI編集者"],
+        ["ideaStockPanel", "ネタストック"],
+        ["section-output", "出力"]
+      ],
+      image: [
+        ["characterPresetPanel", "キャラ画像"],
+        ["mangaImageGenBox", "漫画画像生成"],
+        ["imageGenerationSettingsPanel", "生成設定"],
+        ["generatedImageActionsPanel", "画像操作"],
+        ["preReservationStockPanel", "予約前ストック"],
+        ["section-output", "出力"]
+      ],
+      post: [
+        ["preReservationStockPanel", "予約前ストック"],
+        ["snsReservationPanel", "SNS予約投稿"],
+        ["reservationTextPanel", "投稿文・タグ"],
+        ["reservationScheduleSettingsPanel", "日時・投稿先"],
+        ["xPostSettingsPanel", "X設定"],
+        ["wordPressSettingsPanel", "WordPress設定"],
+        ["reservationCompletedQueuePanel", "予約結果"],
+        ["reservationActionPanel", "予約操作"],
+        ["reservationCalendarPanel", "カレンダー"],
+        ["reservationDateTimePanel", "日時変更"],
+        ["reservationObsidianActionsPanel", "Obsidian出力"]
+      ],
+      settings: [
+        ["apiSettingsBar", "AI・同期設定"],
+        ["characterPresetPanel", "キャラ画像"],
+        ["xPostSettingsPanel", "X設定"],
+        ["wordPressSettingsPanel", "WordPress設定"],
+        ["toolUtilityPanel", "管理メニュー"]
+      ]
+    };
     let homeDashboardTimer = 0;
     let homeKeptUpdateSeq = 0;
 
@@ -6630,13 +6682,88 @@ ${text}`;
     function openPanelsForToolView(view) {
       const panels = [];
       if (view === "idea") panels.push("aiEditorPanel", "ideaStockPanel");
-      if (view === "image") panels.push("characterPresetPanel", "imagePromptSettingsPanel", "generatedImageActionsPanel", "preReservationStockPanel");
+      if (view === "image") panels.push("characterPresetPanel", "imageGenerationSettingsPanel", "generatedImageActionsPanel", "preReservationStockPanel");
       if (view === "post") panels.push("preReservationStockPanel", "reservationTextPanel", "reservationActionPanel", "reservationCompletedQueuePanel");
       if (view === "settings") panels.push("characterPresetPanel", "xPostSettingsPanel", "wordPressSettingsPanel");
       panels.forEach((id) => {
         const panel = $(id);
         if (panel && "open" in panel) panel.open = true;
       });
+    }
+
+    function updateStickyChromeMetrics() {
+      const header = document.querySelector("header");
+      const nav = document.querySelector(".app-mode-nav");
+      const isBottomNav = window.matchMedia("(max-width: 620px)").matches;
+      const isCompact = window.matchMedia("(max-width: 980px)").matches;
+      const headerHeight = (!isBottomNav && !isCompact && header) ? Math.ceil(header.getBoundingClientRect().height) : 0;
+      const navHeight = nav ? Math.ceil(nav.getBoundingClientRect().height) : 62;
+      document.documentElement.style.setProperty("--sticky-header-height", `${headerHeight}px`);
+      document.documentElement.style.setProperty("--sticky-nav-height", `${navHeight}px`);
+      document.documentElement.style.setProperty("--sticky-scroll-offset", isBottomNav ? "18px" : `${headerHeight + navHeight + 18}px`);
+    }
+
+    function openAncestorDetails(target) {
+      let node = target?.parentElement;
+      while (node) {
+        if (node.tagName === "DETAILS") node.open = true;
+        node = node.parentElement;
+      }
+    }
+
+    function setActiveSideTocLink(targetId) {
+      document.querySelectorAll("#sideTocLinks a").forEach((link) => {
+        link.classList.toggle("active", link.dataset.targetId === targetId);
+      });
+    }
+
+    function renderSideToc(view) {
+      const holder = $("sideTocLinks");
+      if (!holder) return;
+      holder.innerHTML = "";
+      const items = (SIDE_TOC_ITEMS[normalizeToolView(view)] || []).filter(([id]) => $(id));
+      items.forEach(([id, label], index) => {
+        const link = document.createElement("a");
+        link.href = `#${id}`;
+        link.textContent = label;
+        link.dataset.targetId = id;
+        if (index === 0) link.classList.add("active");
+        link.addEventListener("click", (event) => {
+          event.preventDefault();
+          const target = $(id);
+          if (!target) return;
+          openAncestorDetails(target);
+          setActiveSideTocLink(id);
+          target.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+        holder.appendChild(link);
+      });
+    }
+
+    let sideTocRaf = 0;
+    let stickyChromeEventsBound = false;
+    function updateActiveSideTocFromScroll() {
+      if (sideTocRaf) return;
+      sideTocRaf = requestAnimationFrame(() => {
+        sideTocRaf = 0;
+        const links = Array.from(document.querySelectorAll("#sideTocLinks a"));
+        if (!links.length) return;
+        const offset = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--sticky-scroll-offset"), 10) || 140;
+        let activeId = links[0].dataset.targetId;
+        links.forEach((link) => {
+          const target = $(link.dataset.targetId);
+          if (target && target.getBoundingClientRect().top <= offset + 24) activeId = link.dataset.targetId;
+        });
+        setActiveSideTocLink(activeId);
+      });
+    }
+
+    function bindStickyChromeListeners() {
+      if (stickyChromeEventsBound) return;
+      stickyChromeEventsBound = true;
+      window.addEventListener("resize", updateStickyChromeMetrics, { passive: true });
+      window.addEventListener("load", updateStickyChromeMetrics, { once: true });
+      window.addEventListener("scroll", updateActiveSideTocFromScroll, { passive: true });
     }
 
     function setToolView(view, options = {}) {
@@ -6649,7 +6776,9 @@ ${text}`;
         button.setAttribute("aria-current", active ? "page" : "false");
       });
       openPanelsForToolView(next);
+      renderSideToc(next);
       updateHomeDashboard();
+      updateStickyChromeMetrics();
       if (options.scroll !== false) {
         const target = viewScrollTarget(next);
         if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -6657,12 +6786,14 @@ ${text}`;
     }
 
     function initToolViewNavigation() {
+      bindStickyChromeListeners();
       document.querySelectorAll("[data-tool-view-button], [data-tool-view-jump]").forEach((button) => {
         button.addEventListener("click", () => {
           const view = button.dataset.toolViewButton || button.dataset.toolViewJump;
           setToolView(view);
         });
       });
+      updateStickyChromeMetrics();
       setToolView(localStorage.getItem(TOOL_VIEW_KEY) || "home", { scroll: false });
     }
 
