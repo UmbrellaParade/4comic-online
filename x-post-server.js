@@ -12,6 +12,8 @@ const IS_RAILWAY = !!(
   || process.env.RAILWAY_PUBLIC_DOMAIN
 );
 const ONLINE_MODE = IS_RAILWAY || /^(1|true|yes|on)$/i.test(String(process.env.ONLINE_MODE || ""));
+const FORCE_LOCAL_SCHEDULER = /^(1|true|yes|on)$/i.test(String(process.env.LOCAL_SCHEDULER || ""));
+const FORCE_PERSISTENT_DATA_DIR = /^(1|true|yes|on)$/i.test(String(process.env.DATA_DIR_PERSISTENT || ""));
 const HOST = process.env.HOST || (ONLINE_MODE ? "0.0.0.0" : "127.0.0.1");
 const PORT = Number(process.env.PORT || process.env.X_POST_SERVER_PORT || 8787);
 const PUBLIC_BASE_URL = String(
@@ -218,6 +220,7 @@ function pathEqualsOrInside(parent, child) {
 
 function isPersistentDataDir() {
   if (!ONLINE_MODE) return true;
+  if (FORCE_PERSISTENT_DATA_DIR) return true;
   const dataDir = path.resolve(DATA_DIR);
   const railwayVolume = String(process.env.RAILWAY_VOLUME_MOUNT_PATH || "").trim();
   if (railwayVolume && pathEqualsOrInside(railwayVolume, dataDir)) return true;
@@ -3386,7 +3389,7 @@ restoreScheduleQueueFromPersistentStore("server startup")
 
   // GitHub Actions (.github/workflows) が存在する場合はローカルスケジューラーを無効化
   // → GitHub Actions 側だけが投稿を担当し、二重投稿を防ぐ
-  const hasGitHubActions = isGitHubActionsSchedulerMode();
+  const hasGitHubActions = !FORCE_LOCAL_SCHEDULER && isGitHubActionsSchedulerMode();
   if (hasGitHubActions) {
     log("ローカルスケジューラー無効（GitHub Actions モード）二重投稿防止のため、予約投稿はGitHub Actionsが担当します。");
     // GitHubから最新のスケジュールを取得してローカルを同期
