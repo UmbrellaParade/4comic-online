@@ -187,6 +187,281 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+function sendVaultBrowserHtml(res) {
+  res.writeHead(200, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-store"
+  });
+  res.end(`<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Umbrella Parade Vault</title>
+  <style>
+    :root { color-scheme: dark; --bg: #090912; --panel: #141421; --line: #2d2d42; --text: #f8fafc; --muted: #a8b0c2; --accent: #f472b6; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    header { position: sticky; top: 0; z-index: 2; padding: 14px 16px; background: rgba(9,9,18,.96); border-bottom: 1px solid var(--line); backdrop-filter: blur(10px); }
+    h1 { margin: 0 0 10px; font-size: 18px; letter-spacing: 0; }
+    .controls { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
+    input, button { min-height: 40px; border: 1px solid var(--line); border-radius: 8px; background: #0f1020; color: var(--text); padding: 8px 10px; font-size: 14px; }
+    button { cursor: pointer; background: #24243a; }
+    button.primary { background: var(--accent); color: #170511; border-color: var(--accent); font-weight: 700; }
+    main { padding: 14px; max-width: 1120px; margin: 0 auto; }
+    .path { color: var(--muted); font-size: 13px; margin: 8px 0 14px; word-break: break-all; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+    .item { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 10px; min-height: 104px; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+    .item button { width: 100%; text-align: left; background: transparent; border: 0; padding: 0; min-height: 0; color: var(--text); }
+    .thumb { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 6px; background: #080812; border: 1px solid var(--line); }
+    .name { font-size: 13px; overflow-wrap: anywhere; line-height: 1.35; }
+    .meta { color: var(--muted); font-size: 11px; margin-top: auto; }
+    .status { margin-top: 10px; color: var(--muted); font-size: 13px; }
+    .error { color: #fca5a5; }
+    @media (max-width: 640px) {
+      .controls { grid-template-columns: 1fr; }
+      .grid { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
+      header { padding: 12px; }
+      main { padding: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Umbrella Parade Vault</h1>
+    <div class="controls">
+      <input id="syncKey" type="password" placeholder="クラウド同期キー">
+      <button id="saveKey" type="button">キー保存</button>
+      <button id="reload" class="primary" type="button">表示更新</button>
+    </div>
+    <div id="status" class="status">同期キーを入れて表示更新を押してください。</div>
+  </header>
+  <main>
+    <div class="path" id="pathLabel">/</div>
+    <div class="grid" id="grid"></div>
+  </main>
+  <script>
+    const KEY_STORAGE = "umbrellaVaultBrowserSyncKey";
+    const state = { path: "" };
+    const keyInput = document.getElementById("syncKey");
+    const statusEl = document.getElementById("status");
+    const grid = document.getElementById("grid");
+    const pathLabel = document.getElementById("pathLabel");
+    keyInput.value = localStorage.getItem(KEY_STORAGE) || "";
+    document.getElementById("saveKey").addEventListener("click", () => {
+      localStorage.setItem(KEY_STORAGE, keyInput.value.trim());
+      setStatus("同期キーを保存しました。");
+    });
+    document.getElementById("reload").addEventListener("click", () => loadPath(state.path));
+    function setStatus(message, error = false) {
+      statusEl.textContent = message || "";
+      statusEl.className = "status" + (error ? " error" : "");
+    }
+    function authHeaders() {
+      const key = keyInput.value.trim() || localStorage.getItem(KEY_STORAGE) || "";
+      return key ? { "X-Umbrella-Sync-Key": key } : {};
+    }
+    function joinPath(base, name) {
+      return [base, name].filter(Boolean).join("/").replace(/\\/+/g, "/");
+    }
+    function parentPath(path) {
+      const parts = String(path || "").split("/").filter(Boolean);
+      parts.pop();
+      return parts.join("/");
+    }
+    function formatBytes(size) {
+      const n = Number(size || 0);
+      if (n > 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + " MB";
+      if (n > 1024) return (n / 1024).toFixed(1) + " KB";
+      return n + " B";
+    }
+    async function loadPath(path = "") {
+      state.path = path || "";
+      pathLabel.textContent = "/" + state.path;
+      grid.innerHTML = "";
+      setStatus("読み込み中です...");
+      try {
+        const res = await fetch("/vault-list?path=" + encodeURIComponent(state.path), { headers: authHeaders() });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json.ok) throw new Error(json.error || "読み込みに失敗しました。");
+        renderItems(json);
+        setStatus((json.entries || []).length + "件を表示しています。");
+      } catch (error) {
+        setStatus(error.message || String(error), true);
+      }
+    }
+    function renderItems(json) {
+      grid.innerHTML = "";
+      if (json.path) {
+        grid.appendChild(createNavItem("..", "folder", () => loadPath(parentPath(json.path)), "上のフォルダーへ"));
+      }
+      for (const entry of json.entries || []) {
+        if (entry.type === "directory") {
+          grid.appendChild(createNavItem(entry.name, "folder", () => loadPath(entry.path), "フォルダー"));
+        } else {
+          grid.appendChild(createFileItem(entry));
+        }
+      }
+    }
+    function createNavItem(name, type, onClick, meta) {
+      const cell = document.createElement("div");
+      cell.className = "item";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.innerHTML = '<div class="name">' + (type === "folder" ? "[フォルダー] " : "") + escapeHtml(name) + '</div>';
+      button.addEventListener("click", onClick);
+      const m = document.createElement("div");
+      m.className = "meta";
+      m.textContent = meta || "";
+      cell.append(button, m);
+      return cell;
+    }
+    function createFileItem(entry) {
+      const cell = document.createElement("div");
+      cell.className = "item";
+      if (entry.image) {
+        const img = document.createElement("img");
+        img.className = "thumb";
+        img.alt = entry.name;
+        loadImageBlob(entry.path, img);
+        cell.appendChild(img);
+      }
+      const button = document.createElement("button");
+      button.type = "button";
+      button.innerHTML = '<div class="name">' + escapeHtml(entry.name) + '</div>';
+      button.addEventListener("click", () => openFile(entry.path, entry.name));
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = formatBytes(entry.size) + " / " + (entry.modifiedAt || "");
+      cell.append(button, meta);
+      return cell;
+    }
+    async function loadImageBlob(path, img) {
+      try {
+        const res = await fetch("/vault-file?path=" + encodeURIComponent(path), { headers: authHeaders() });
+        if (!res.ok) return;
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        img.src = url;
+        img.addEventListener("load", () => URL.revokeObjectURL(url), { once: true });
+      } catch {}
+    }
+    async function openFile(path, name) {
+      try {
+        const res = await fetch("/vault-file?path=" + encodeURIComponent(path), { headers: authHeaders() });
+        if (!res.ok) throw new Error("ファイルを開けませんでした。");
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.target = "_blank";
+        a.download = name || "download";
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+      } catch (error) {
+        setStatus(error.message || String(error), true);
+      }
+    }
+    function escapeHtml(value) {
+      return String(value || "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+    }
+  </script>
+</body>
+</html>`);
+}
+
+function vaultAccessKey(req, requestUrl) {
+  return String(req.headers["x-umbrella-sync-key"] || requestUrl.searchParams.get("key") || "").trim();
+}
+
+function ensureVaultAccess(req, requestUrl) {
+  const expected = clientStateSyncKey();
+  if (!expected) {
+    const error = new Error("Vault browser requires CLIENT_STATE_SYNC_KEY.");
+    error.status = 403;
+    throw error;
+  }
+  if (vaultAccessKey(req, requestUrl) !== expected) {
+    const error = new Error("同期キーが違うか未入力です。");
+    error.status = 403;
+    throw error;
+  }
+}
+
+function safeVaultFilePath(rawPath = "") {
+  const clean = String(rawPath || "")
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .trim();
+  if (clean.includes("..")) {
+    const error = new Error("Invalid vault path.");
+    error.status = 400;
+    throw error;
+  }
+  const root = path.resolve(VAULT_ROOT);
+  const target = path.resolve(root, clean);
+  if (!pathEqualsOrInside(root, target)) {
+    const error = new Error("Vault path is outside the allowed folder.");
+    error.status = 400;
+    throw error;
+  }
+  return { fullPath: target, relativePath: path.relative(root, target).replace(/\\/g, "/") };
+}
+
+function vaultEntryPayload(root, fullPath, entry) {
+  const stat = fs.statSync(fullPath);
+  const relativePath = path.relative(root, fullPath).replace(/\\/g, "/");
+  const ext = path.extname(entry.name).toLowerCase();
+  return {
+    name: entry.name,
+    path: relativePath,
+    type: entry.isDirectory() ? "directory" : "file",
+    size: entry.isFile() ? stat.size : 0,
+    modifiedAt: stat.mtime.toISOString().slice(0, 19).replace("T", " "),
+    image: entry.isFile() && [".png", ".jpg", ".jpeg", ".webp", ".gif"].includes(ext)
+  };
+}
+
+function listVaultFolder(req, res, requestUrl) {
+  ensureVaultAccess(req, requestUrl);
+  const { fullPath, relativePath } = safeVaultFilePath(requestUrl.searchParams.get("path") || "");
+  if (!fs.existsSync(fullPath)) {
+    const error = new Error("Vault path was not found.");
+    error.status = 404;
+    throw error;
+  }
+  if (!fs.statSync(fullPath).isDirectory()) {
+    const error = new Error("Vault path is not a folder.");
+    error.status = 400;
+    throw error;
+  }
+  const root = path.resolve(VAULT_ROOT);
+  const entries = fs.readdirSync(fullPath, { withFileTypes: true })
+    .filter((entry) => ![".git"].includes(entry.name))
+    .map((entry) => vaultEntryPayload(root, path.join(fullPath, entry.name), entry))
+    .sort((a, b) => {
+      if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
+      return a.name.localeCompare(b.name, "ja");
+    });
+  sendJson(res, 200, { ok: true, root: VAULT_ROOT, path: relativePath, entries });
+}
+
+function sendVaultFile(req, res, requestUrl) {
+  ensureVaultAccess(req, requestUrl);
+  const { fullPath } = safeVaultFilePath(requestUrl.searchParams.get("path") || "");
+  if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isFile()) {
+    const error = new Error("Vault file was not found.");
+    error.status = 404;
+    throw error;
+  }
+  res.writeHead(200, {
+    ...corsHeaders(),
+    "Content-Type": mediaTypeFromImageName(fullPath),
+    "Cache-Control": "private, no-store"
+  });
+  fs.createReadStream(fullPath).pipe(res);
+}
+
 function readJsonFile(filePath, fallback) {
   try {
     return withFileRetry(() => {
@@ -2868,6 +3143,31 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && ["/", "/tool", "/tool/"].includes(requestUrl.pathname)) {
     sendToolHtml(res);
+    return;
+  }
+
+  if (req.method === "GET" && ["/vault", "/vault/"].includes(requestUrl.pathname)) {
+    sendVaultBrowserHtml(res);
+    return;
+  }
+
+  if (req.method === "GET" && requestUrl.pathname === "/vault-list") {
+    try {
+      listVaultFolder(req, res, requestUrl);
+    } catch (error) {
+      rememberError(error, { route: "/vault-list" });
+      sendJson(res, error.status || 500, { ok: false, error: error.message || "Vault list error." });
+    }
+    return;
+  }
+
+  if (req.method === "GET" && requestUrl.pathname === "/vault-file") {
+    try {
+      sendVaultFile(req, res, requestUrl);
+    } catch (error) {
+      rememberError(error, { route: "/vault-file" });
+      sendJson(res, error.status || 500, { ok: false, error: error.message || "Vault file error." });
+    }
     return;
   }
 
