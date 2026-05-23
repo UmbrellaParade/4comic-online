@@ -1937,6 +1937,7 @@
               <div class="check-row">
                 <label><input id="createAutoPostText" type="checkbox"> ネタ用投稿文を作る</label>
                 <label><input id="includeAutoPostText" type="checkbox"> ネタ用投稿文も一緒に投稿する</label>
+                <label><input id="includeManualPostText" type="checkbox"> 投稿文も一緒に投稿する</label>
               </div>
               <label>固定ハッシュタグ
                 <textarea id="fixedHashtags" rows="2" placeholder="#UmbrellaParade #4コマ漫画"></textarea>
@@ -1946,7 +1947,14 @@
               </label>
               <div class="check-row">
                 <label><input id="createIdeaHashtags" type="checkbox" checked> ネタ用ハッシュタグを作る</label>
-                <label><input id="includeIdeaHashtags" type="checkbox" checked> ネタ用ハッシュタグも一緒に投稿する</label>
+                <input id="includeIdeaHashtags" type="checkbox" checked hidden>
+                <label>投稿するハッシュタグ
+                  <select id="hashtagPostMode">
+                    <option value="fixed">固定ハッシュタグを投稿する</option>
+                    <option value="idea">ネタ用ハッシュタグを投稿する</option>
+                    <option value="mixed">固定＋ネタ用をミックスして投稿する</option>
+                  </select>
+                </label>
               </div>
             </div>
           </details>
@@ -2207,7 +2215,7 @@
     const fields = [
       "character", "status", "title", "subtitle", "theme", "scheduled", "scheduledTime", "aim",
       "p1", "p2", "p3", "p4", "platform", "manualPostText", "autoPostText", "fixedHashtags", "ideaHashtags", "aiModel", "customModel", "calendarMonth",
-      "manualIdeaSeed",
+      "manualIdeaSeed", "hashtagPostMode",
       "pastIdeaTitle", "pastIdeaText",
       "imageModel", "customImageModel", "imageSize", "imageQuality", "imageFormat",
       "imageDownloadBaseName",
@@ -2215,9 +2223,9 @@
       "angleFront", "angleRight", "angleLeft", "angleBack",
       "notes"
     ];
-    const checks = ["aiLabel", "question", "logo", "chatGptReferenceInstruction", "autoStock", "autoObsidian", "avoidDuplicateIdeas", "createAutoPostText", "includeAutoPostText", "createIdeaHashtags", "includeIdeaHashtags", "calendarAllCharacters", "useFixedImportDirectory", "appendSlugNumberToImageDownloadName", "appendIdeaTitleToImageDownloadName"];
-    const SNS_TEXT_FIELD_IDS = ["manualPostText", "autoPostText", "fixedHashtags", "ideaHashtags"];
-    const SNS_TEXT_CHECK_IDS = ["createAutoPostText", "includeAutoPostText", "createIdeaHashtags", "includeIdeaHashtags"];
+    const checks = ["aiLabel", "question", "logo", "chatGptReferenceInstruction", "autoStock", "autoObsidian", "avoidDuplicateIdeas", "createAutoPostText", "includeAutoPostText", "includeManualPostText", "createIdeaHashtags", "includeIdeaHashtags", "calendarAllCharacters", "useFixedImportDirectory", "appendSlugNumberToImageDownloadName", "appendIdeaTitleToImageDownloadName"];
+    const SNS_TEXT_FIELD_IDS = ["manualPostText", "autoPostText", "fixedHashtags", "ideaHashtags", "hashtagPostMode"];
+    const SNS_TEXT_CHECK_IDS = ["createAutoPostText", "includeAutoPostText", "includeManualPostText", "createIdeaHashtags", "includeIdeaHashtags"];
     let activeTab = "card";
     let activeSnsSettingsCharacter = "";
     let lastScriptEvaluation = null;
@@ -5670,6 +5678,14 @@
       return `umbrellaMangaSnsTextSettings_${character || "ヴェル13世"}`;
     }
 
+    function normalizeHashtagPostMode(mode, source = {}) {
+      const value = String(mode || "").trim();
+      if (["fixed", "idea", "mixed"].includes(value)) return value;
+      if (source.includeIdeaHashtags === false) return "fixed";
+      if (source.includeIdeaHashtags === true) return "mixed";
+      return "mixed";
+    }
+
     function defaultSnsTextSettings(character = val("character")) {
       const info = characterData[character] || characterData["ヴェル13世"];
       return {
@@ -5677,8 +5693,10 @@
         autoPostText: "",
         fixedHashtags: info.tags || "",
         ideaHashtags: "",
+        hashtagPostMode: "mixed",
         createAutoPostText: false,
         includeAutoPostText: false,
+        includeManualPostText: false,
         createIdeaHashtags: true,
         includeIdeaHashtags: true
       };
@@ -5700,6 +5718,7 @@
       SNS_TEXT_FIELD_IDS.forEach((id) => {
         if ($(id)) $(id).value = merged[id] || "";
       });
+      if ($("hashtagPostMode")) $("hashtagPostMode").value = normalizeHashtagPostMode(merged.hashtagPostMode, merged);
       SNS_TEXT_CHECK_IDS.forEach((id) => {
         if ($(id)) $(id).checked = !!merged[id];
       });
@@ -5859,8 +5878,10 @@
         autoPostText: val("autoPostText"),
         fixedHashtags: val("fixedHashtags"),
         ideaHashtags: val("ideaHashtags"),
+        hashtagPostMode: val("hashtagPostMode"),
         createAutoPostText: $("createAutoPostText").checked,
         includeAutoPostText: $("includeAutoPostText").checked,
+        includeManualPostText: $("includeManualPostText").checked,
         createIdeaHashtags: $("createIdeaHashtags").checked,
         includeIdeaHashtags: $("includeIdeaHashtags").checked,
         aiProvider: val("aiProvider"),
@@ -6138,9 +6159,10 @@ Sub-character staging rules:
 - Speech bubble ownership is critical. Each speech bubble belongs to exactly one speaker.
 - Speech bubble tails must point to the correct speaker's mouth or chest area.
 - Never place a sub-character's line in a bubble visually attached to the main character, and never place the main character's line in a bubble visually attached to the sub-character.
-- Do not make two characters speak in the same panel. One panel = one visible speech bubble = one speaking character.
-- If the script seems to contain two speakers in one panel, choose the emotionally dominant line and draw only that speaker's bubble.
-- If both characters need dialogue, alternate speakers across panels instead of putting both voices into one panel.
+- If two characters speak in the same panel, draw separate speech bubbles for each speaker and place each bubble next to the correct character.
+- When two or more characters speak in one panel, character ownership has higher priority than the default left/right bubble layout rule.
+- In dialogue panels, ignore the fixed bubble side rule if needed; put each bubble on the side closest to its speaker and point the tail clearly to that speaker.
+- Keep same-panel dialogue short. If there is not enough room for two readable bubbles, choose the emotionally dominant line and draw only that speaker's bubble.
 - Do not draw two bubble tails pointing to the same character when the text belongs to different speakers.
 - If the correct speaker is unclear, simplify the panel to one speaker rather than attaching the wrong character's dialogue.
 - If the panel script includes a speaker label such as "Vel 13th:", "ヴェル13世「...」", "Carla Manson:", or "カーラ・マンソン「...」", use the label only to assign the bubble to that character. Do not draw the speaker name label unless it is part of the spoken line.
@@ -6351,10 +6373,13 @@ ${d.aiLabel ? "Disclosure note: AI-generated media may be labeled if required by
     }
 
     function postIdeaHashtags(d) {
-      return d.includeIdeaHashtags ? normalizeHashtagText(d.ideaHashtags || "") : "";
+      return normalizeHashtagText(d.ideaHashtags || "");
     }
 
     function postHashtags(d) {
+      const mode = normalizeHashtagPostMode(d.hashtagPostMode, d);
+      if (mode === "fixed") return postFixedHashtags(d);
+      if (mode === "idea") return postIdeaHashtags(d);
       return normalizeHashtagText([postFixedHashtags(d), postIdeaHashtags(d)].filter(Boolean).join(" "));
     }
 
@@ -6364,7 +6389,7 @@ ${d.aiLabel ? "Disclosure note: AI-generated media may be labeled if required by
 
     function postBody(d) {
       return [
-        d.manualPostText || "",
+        d.includeManualPostText ? (d.manualPostText || "") : "",
         d.includeAutoPostText ? (d.autoPostText || "") : ""
       ].map((text) => String(text || "").trim()).filter(Boolean).join("\n\n");
     }
@@ -6524,11 +6549,11 @@ ${text}`;
     const VAULT_NAME = "Obsidian Folder";
     const ACTIVE_IDEA_FIELD_IDS = [
       "character", "imagePatternName", "title", "subtitle", "theme", "aim",
-      "p1", "p2", "p3", "p4", "manualPostText", "autoPostText", "ideaHashtags", "manualIdeaSeed"
+      "p1", "p2", "p3", "p4", "manualPostText", "autoPostText", "ideaHashtags", "hashtagPostMode", "manualIdeaSeed"
     ];
     const ACTIVE_IDEA_CHECK_IDS = [
       "question", "logo", "chatGptReferenceInstruction",
-      "createAutoPostText", "includeAutoPostText", "createIdeaHashtags", "includeIdeaHashtags"
+      "createAutoPostText", "includeAutoPostText", "includeManualPostText", "createIdeaHashtags", "includeIdeaHashtags"
     ];
     const ACTIVE_IDEA_CONTENT_IDS = [
       "title", "subtitle", "p1", "p2", "p3", "p4", "manualPostText", "autoPostText", "ideaHashtags", "manualIdeaSeed"
@@ -7644,8 +7669,10 @@ ${text}`;
         manualIdeaSeed: d.manualIdeaSeed,
         fixedHashtags: d.fixedHashtags,
         ideaHashtags: d.ideaHashtags,
+        hashtagPostMode: d.hashtagPostMode,
         createAutoPostText: d.createAutoPostText,
         includeAutoPostText: d.includeAutoPostText,
+        includeManualPostText: d.includeManualPostText,
         createIdeaHashtags: d.createIdeaHashtags,
         includeIdeaHashtags: d.includeIdeaHashtags,
         p1: d.p1,
@@ -7684,8 +7711,10 @@ ${text}`;
       $("autoPostText").value = item.autoPostText || "";
       $("fixedHashtags").value = item.fixedHashtags || item.manualHashtags || (characterData[item.character || "ヴェル13世"] || characterData["ヴェル13世"]).tags || "";
       $("ideaHashtags").value = item.ideaHashtags || "";
+      $("hashtagPostMode").value = normalizeHashtagPostMode(item.hashtagPostMode, item);
       $("createAutoPostText").checked = !!item.createAutoPostText;
       $("includeAutoPostText").checked = !!item.includeAutoPostText;
+      $("includeManualPostText").checked = !!item.includeManualPostText;
       $("createIdeaHashtags").checked = item.createIdeaHashtags !== false;
       $("includeIdeaHashtags").checked = item.includeIdeaHashtags !== false;
       $("p1").value = item.p1 || "";
@@ -7764,7 +7793,7 @@ ${item.autoPostText || "-"}
       const allowed = [
         "id", "type", "createdAt", "character", "imagePatternName", "title", "subtitle",
         "theme", "aim", "manualPostText", "autoPostText", "fixedHashtags", "ideaHashtags",
-        "createAutoPostText", "includeAutoPostText", "createIdeaHashtags", "includeIdeaHashtags",
+        "hashtagPostMode", "createAutoPostText", "includeAutoPostText", "includeManualPostText", "createIdeaHashtags", "includeIdeaHashtags",
         "manualHashtags", "platform", "date", "time", "aiProvider", "aiModel",
         "imagePath", "imageId", "imageFilename", "imageModel", "imageCreatedAt",
         "imageKeptAt", "imageSaveStatus", "localImagePath", "localImageSavedAt", "localImageSaveStatus",
@@ -9289,8 +9318,10 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         autoPostText: $("autoPostText") ? val("autoPostText") : "",
         fixedHashtags: $("fixedHashtags") ? val("fixedHashtags") : "",
         ideaHashtags: $("ideaHashtags") ? val("ideaHashtags") : "",
+        hashtagPostMode: $("hashtagPostMode") ? val("hashtagPostMode") : "mixed",
         createAutoPostText: $("createAutoPostText") ? $("createAutoPostText").checked : false,
         includeAutoPostText: $("includeAutoPostText") ? $("includeAutoPostText").checked : false,
+        includeManualPostText: $("includeManualPostText") ? $("includeManualPostText").checked : false,
         createIdeaHashtags: $("createIdeaHashtags") ? $("createIdeaHashtags").checked : true,
         includeIdeaHashtags: $("includeIdeaHashtags") ? $("includeIdeaHashtags").checked : true
       };
@@ -9309,8 +9340,10 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         ? (item.fixedHashtags || item.manualHashtags || (characterData[item.character || "ヴェル13世"] || characterData["ヴェル13世"]).tags || "")
         : ((characterData[val("character")] || characterData["ヴェル13世"]).tags || "");
       $("ideaHashtags").value = item ? (item.ideaHashtags || "") : "";
+      $("hashtagPostMode").value = item ? normalizeHashtagPostMode(item.hashtagPostMode, item) : "mixed";
       $("createAutoPostText").checked = item ? !!item.createAutoPostText : false;
       $("includeAutoPostText").checked = item ? !!item.includeAutoPostText : false;
+      $("includeManualPostText").checked = item ? !!item.includeManualPostText : false;
       $("createIdeaHashtags").checked = item ? item.createIdeaHashtags !== false : true;
       $("includeIdeaHashtags").checked = item ? item.includeIdeaHashtags !== false : true;
       render();
@@ -9319,7 +9352,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     function persistSelectedReservationTextOverrides(item = selectedReservation()) {
       if (!item) return null;
       const patch = currentManualPostFields();
-      const same = ["manualPostText", "autoPostText", "fixedHashtags", "ideaHashtags", "createAutoPostText", "includeAutoPostText", "createIdeaHashtags", "includeIdeaHashtags"]
+      const same = ["manualPostText", "autoPostText", "fixedHashtags", "ideaHashtags", "hashtagPostMode", "createAutoPostText", "includeAutoPostText", "includeManualPostText", "createIdeaHashtags", "includeIdeaHashtags"]
         .every((key) => (item[key] || (typeof patch[key] === "boolean" ? false : "")) === patch[key]);
       if (same) return item;
       return updateReservationById(item.id, patch) || { ...item, ...patch };
@@ -9344,7 +9377,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     function wordpressBodyText(item) {
       if (!item) return "";
       const body = [
-        item.manualPostText || "",
+        item.includeManualPostText ? (item.manualPostText || "") : "",
         item.includeAutoPostText ? (item.autoPostText || "") : ""
       ].map((text) => String(text || "").trim()).filter(Boolean).join("\n\n");
       return removeHashtagsFromText(body);
@@ -10090,11 +10123,16 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     }
 
     async function postToXLocalServer({ token, text, image, item }) {
+      const targetCharacter = item.character || val("character") || "";
+      const xOAuthSettings = getXOAuthSettingsForCharacter(targetCharacter);
       const response = await fetch(`${xLocalServerUrl()}/post-x`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token,
+          refreshToken: getXRefreshTokenForCharacter(targetCharacter),
+          clientId: xOAuthSettings.clientId,
+          clientSecret: xOAuthSettings.clientSecret,
           text,
           imageDataUrl: image.dataUrl,
           filename: image.filename || item.imageFilename || "",
@@ -12716,8 +12754,10 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       $("autoObsidian").checked = false;
       $("createAutoPostText").checked = false;
       $("includeAutoPostText").checked = false;
+      $("includeManualPostText").checked = false;
       $("createIdeaHashtags").checked = true;
       $("includeIdeaHashtags").checked = true;
+      $("hashtagPostMode").value = "mixed";
       $("useFixedImportDirectory").checked = true;
       $("appendSlugNumberToImageDownloadName").checked = true;
       $("appendIdeaTitleToImageDownloadName").checked = true;

@@ -4056,7 +4056,14 @@ const server = http.createServer(async (req, res) => {
     try {
       const raw = await readBody(req);
       const payload = JSON.parse(raw || "{}");
-      const token = validateToken(payload.token);
+      const tokenJob = {
+        character: String(payload.character || ""),
+        token: String(payload.token || ""),
+        refreshToken: String(payload.refreshToken || ""),
+        clientId: String(payload.clientId || ""),
+        clientSecret: String(payload.clientSecret || "")
+      };
+      const token = await refreshTokenForScheduledJob(tokenJob);
       const text = String(payload.text || "").trim();
 
       if (!text) throw new Error("投稿文が空です。");
@@ -4068,7 +4075,8 @@ const server = http.createServer(async (req, res) => {
         textLength: text.length,
         imageByteSize: payload.imageByteSize || null,
         compressed: !!payload.compressed,
-        madeWithAi: !!payload.madeWithAi
+        madeWithAi: !!payload.madeWithAi,
+        tokenRefreshed: token !== String(payload.token || "")
       });
       const mediaId = await uploadImageToX(token, payload.imageDataUrl);
       log("MEDIA_UPLOADED", { mediaId });
