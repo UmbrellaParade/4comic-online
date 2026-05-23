@@ -6254,7 +6254,7 @@ ${speakerGuide}
 - Speech bubbles must alternate left and right. Never put all four bubbles on the left.
 - Keep bubbles inside each panel. Do not cover the face, hat, horns, wings, character props, or logo/sign area.
 - Each speech bubble tail must point to the speaking character.
-- In panels with two characters, use only one speech bubble for one speaker. Do not make both characters speak in the same panel.
+- ${subCharNames ? "In panels with two characters where both speak, give each character their own bubble placed clearly next to themselves. Never attach a bubble to the wrong character. Character-matched bubble placement overrides the panel's default left/right side rule." : "In panels with two characters, use only one speech bubble for one speaker. Do not make both characters speak in the same panel."}
 - Use short, extra-large, readable Japanese text. If text becomes too crowded, use fewer words rather than shrinking text.
 
 On-image text whitelist:
@@ -6317,8 +6317,8 @@ Layout rules:
 - Smartphone-friendly composition.
 - Clean panel borders.
 - Emotional facial expressions.
-- Strictly follow the panel-by-panel speech bubble positions above.
-- If the generated draft puts every bubble on one side, it is wrong. Alternate the bubble positions exactly.
+- ${subCharNames ? "Use the panel-by-panel bubble side as a default guide only. When a panel has two speaking characters, each bubble must go next to its own speaker — character identity overrides the panel's default side rule." : "Strictly follow the panel-by-panel speech bubble positions above."}
+- ${subCharNames ? "Do not alternate bubbles by panel number alone when two characters speak in the same panel; ensure each bubble is attached to the correct speaker's side." : "If the generated draft puts every bubble on one side, it is wrong. Alternate the bubble positions exactly."}
 - Strictly follow the character-specific panel color and emotion progression.
 ${d.character === "カーラ・マンソン" ? "- For Carla Manson, use rose pink, deep purple, wine red, then dark gold or pale pink. Do not use Vel 13th's blue-orange progression." : "- For Vel 13th, use blue, purple, red, then orange."}
 ${d.logo ? logoProfile.instruction : ""}
