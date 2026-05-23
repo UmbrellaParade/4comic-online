@@ -1633,6 +1633,10 @@
           </div>
         </div>
 
+        <div class="subchar-section" id="subCharIdeaSection">
+          <div class="subchar-title">登場キャラクター（複数選択可）</div>
+          <div id="subCharChecksIdea" class="check-row"></div>
+        </div>
         <div class="actions">
           <button id="autoGenerate" class="generate-ai-btn" type="button">✨ ネタ自動生成</button>
           <button id="reGenerate" class="secondary" type="button">↺ 再生成</button>
@@ -5396,7 +5400,7 @@
     }
 
     function selectedSubCharacterNames() {
-      return Array.from(document.querySelectorAll(".subchar-check:checked")).map((el) => el.value);
+      return [...new Set(Array.from(document.querySelectorAll(".subchar-check:checked")).map((el) => el.value))];
     }
 
     function readSubCharacterSelection(character = val("character")) {
@@ -5434,11 +5438,8 @@
       return [];
     }
 
-    function updateSubCharChecks() {
-      const main = val("character");
-      const container = $("subCharChecks");
-      const stored = readSubCharacterSelection(main);
-      const selected = new Set(stored);
+    function renderSubCharContainer(container, selected, main, onChange) {
+      if (!container) return;
       container.innerHTML = "";
       Object.keys(characterData)
         .filter((name) => name !== main)
@@ -5453,14 +5454,24 @@
           input.className = "subchar-check";
           input.value = name;
           if (selected.has(name)) input.checked = true;
-          input.addEventListener("change", () => {
-            saveSubCharacterSelection(main);
-            render();
-          });
+          input.addEventListener("change", onChange);
           label.appendChild(input);
           label.appendChild(document.createTextNode(` ${name}${reference?.name ? `（参照: ${reference.name}）` : ""}`));
           container.appendChild(label);
         });
+    }
+
+    function updateSubCharChecks() {
+      const main = val("character");
+      const stored = readSubCharacterSelection(main);
+      const selected = new Set(stored);
+      const onChange = () => {
+        saveSubCharacterSelection(main);
+        updateSubCharChecks();
+        render();
+      };
+      renderSubCharContainer($("subCharChecks"), selected, main, onChange);
+      renderSubCharContainer($("subCharChecksIdea"), selected, main, onChange);
       saveSubCharacterSelection(main, selectedSubCharacterNames());
     }
 
