@@ -8700,7 +8700,10 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       const accessToken = validateXAccessToken(token && token.access_token);
       localStorage.setItem(xAccessTokenKey(targetCharacter), accessToken);
       if (token.refresh_token) localStorage.setItem(xRefreshTokenKey(targetCharacter), token.refresh_token);
-      if (token.expires_in) {
+      const explicitExpiresAt = token.expires_at || token.expiresAt || "";
+      if (explicitExpiresAt && Number.isFinite(Date.parse(explicitExpiresAt))) {
+        localStorage.setItem(xTokenExpiresAtKey(targetCharacter), String(Date.parse(explicitExpiresAt)));
+      } else if (token.expires_in) {
         const expiresAt = Date.now() + Math.max(60, Number(token.expires_in)) * 1000;
         localStorage.setItem(xTokenExpiresAtKey(targetCharacter), String(expiresAt));
       }
@@ -8751,6 +8754,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       const accessToken = getXAccessTokenForCharacter(targetCharacter);
       if (!accessToken) return false;
       const refreshToken = getXRefreshTokenForCharacter(targetCharacter);
+      const expiresAtMs = getXTokenExpiresAt(targetCharacter);
       const { clientId, clientSecret } = getXOAuthSettingsForCharacter(targetCharacter);
       try {
         const response = await fetch(`${xLocalServerUrl()}/oauth/store`, {
@@ -8760,6 +8764,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
             character: targetCharacter,
             accessToken,
             refreshToken,
+            expiresAt: expiresAtMs ? new Date(expiresAtMs).toISOString() : "",
             clientId,
             clientSecret
           })
@@ -8929,7 +8934,8 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       if (!getXAccessTokenForCharacter(targetCharacter) || !getXRefreshTokenForCharacter(targetCharacter)) {
         await restoreXOAuthTokenFromServer(targetCharacter);
       }
-      if (allowRefresh && shouldRefreshXToken(targetCharacter) && getXRefreshTokenForCharacter(targetCharacter)) {
+      const expiresAt = getXTokenExpiresAt(targetCharacter);
+      if (allowRefresh && getXRefreshTokenForCharacter(targetCharacter) && (!expiresAt || shouldRefreshXToken(targetCharacter))) {
         return await refreshXAccessToken(targetCharacter, false);
       }
       return validateXAccessToken(getXAccessTokenForCharacter(targetCharacter));

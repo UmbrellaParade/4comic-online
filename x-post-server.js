@@ -1494,6 +1494,7 @@ function oauthResultWithoutToken(result) {
       access_token: result.token.access_token,
       refresh_token: result.token.refresh_token || "",
       expires_in: result.token.expires_in || null,
+      expires_at: result.token.expires_at || result.expiresAt || null,
       scope: result.token.scope || "",
       token_type: result.token.token_type || "bearer"
     },
@@ -1515,14 +1516,21 @@ function storedOAuthResult(character) {
   if (!key) return null;
   const record = readOAuthTokenStore()[key];
   if (!record || !record.token || !record.token.access_token) return null;
+  const token = { ...record.token };
+  if (!token.expires_at && record.expiresAt) token.expires_at = record.expiresAt;
+  if (!token.expires_in && token.expires_at) {
+    const remain = Math.floor((Date.parse(token.expires_at) - Date.now()) / 1000);
+    if (Number.isFinite(remain) && remain > 0) token.expires_in = remain;
+  }
   return {
     ok: true,
     ready: true,
     character: key,
-    token: record.token,
+    token,
     clientId: record.clientId || "",
     clientSecret: record.clientSecret || "",
-    obtainedAt: record.obtainedAt || ""
+    obtainedAt: record.obtainedAt || "",
+    expiresAt: record.expiresAt || token.expires_at || ""
   };
 }
 
@@ -1533,15 +1541,23 @@ function persistOAuthResult(result) {
   const map = readOAuthTokenStore();
   const previous = map[character] || {};
   const previousToken = previous.token || {};
+  const expiresAt = result.token.expires_at
+    || result.expiresAt
+    || (result.token.expires_in ? new Date(Date.now() + Math.max(60, Number(result.token.expires_in)) * 1000).toISOString() : "")
+    || previous.expiresAt
+    || previousToken.expires_at
+    || "";
   map[character] = {
     character,
     token: {
       ...previousToken,
       ...result.token,
-      refresh_token: result.token.refresh_token || previousToken.refresh_token || ""
+      refresh_token: result.token.refresh_token || previousToken.refresh_token || "",
+      expires_at: expiresAt || undefined
     },
     clientId: result.clientId || previous.clientId || "",
     clientSecret: result.clientSecret || previous.clientSecret || "",
+    expiresAt,
     obtainedAt: result.obtainedAt || previous.obtainedAt || new Date().toISOString(),
     savedAt: new Date().toISOString()
   };
@@ -2080,10 +2096,12 @@ async function handleOAuthStore(req, res) {
   if (!character) throw new Error("Character is empty.");
   const stored = storedOAuthResult(character) || {};
   const accessToken = validateToken(payload.accessToken || payload.token || payload.access_token);
+  const storedToken = stored.token || {};
   const token = {
     access_token: accessToken,
-    refresh_token: String(payload.refreshToken || payload.refresh_token || stored.token?.refresh_token || ""),
-    expires_in: payload.expiresIn || payload.expires_in || null,
+    refresh_token: String(payload.refreshToken || payload.refresh_token || storedToken.refresh_token || ""),
+    expires_in: payload.expiresIn || payload.expires_in || storedToken.expires_in || null,
+    expires_at: payload.expiresAt || payload.expires_at || storedToken.expires_at || stored.expiresAt || null,
     token_type: "bearer"
   };
   const result = {
