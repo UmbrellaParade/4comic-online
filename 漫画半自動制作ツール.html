@@ -1861,6 +1861,7 @@
               </div>
               <div class="actions">
                 <button id="chooseImageDownloadFolder" class="secondary" type="button">保存先フォルダーを選ぶ</button>
+                <button id="chooseVaultImageDownloadFolder" class="secondary" type="button">VPS保存先フォルダーを選ぶ</button>
                 <button id="saveImageDownloadFolder" class="secondary" type="button">保存先を記憶</button>
                 <button id="clearImageDownloadFolder" class="secondary" type="button">保存先をクリア</button>
               </div>
@@ -1870,7 +1871,7 @@
               <div class="check-row">
                 <label><input id="appendIdeaTitleToImageDownloadName" type="checkbox" checked> ネタタイトルをスラッグの後に足す</label>
               </div>
-              <p class="hint">保存先フォルダーはキャラクターごとに記憶します。ブラウザ選択ではフォルダー名だけ表示されます。空欄の場合は通常のブラウザダウンロードになります。例：ダウンロード名「カーラの情緒ログ」＋漫画連載回数1＋ネタタイトル「強がり」 → カーラの情緒ログ1強がり.png</p>
+              <p class="hint">VPSに漫画画像を残す場合は「VPS保存先フォルダーを選ぶ」を使ってください。保存先フォルダーはキャラクターごとに記憶します。空欄の場合は通常のブラウザダウンロードになります。例：ダウンロード名「カーラの情緒ログ」＋漫画連載回数1＋ネタタイトル「強がり」 → カーラの情緒ログ1強がり.png</p>
               <div class="actions">
                 <button id="keepGeneratedImage" class="secondary" type="button">キープ保存</button>
                 <button id="downloadGeneratedImage" class="secondary" type="button">画像をダウンロード</button>
@@ -4351,8 +4352,21 @@
       "アマヨミ": "Umbrella Parade/02_キャラクター資料/アマヨミ/人物画像"
     };
 
+    const VAULT_MANGA_IMAGE_FOLDERS = {
+      "ヴェル13世": "Umbrella Parade/漫画/01_ヴェル13世/画像",
+      "カーラ・マンソン": "Umbrella Parade/漫画/02_カーラ・マンソン/画像",
+      "べるぼ": "Umbrella Parade/漫画/03_べるぼ/画像",
+      "アマモリ": "Umbrella Parade/漫画/04_アマモリ/画像",
+      "アマヨミ": "Umbrella Parade/漫画/05_アマヨミ/画像"
+    };
+
     function vaultCharacterImageFolder(character = val("character") || "ヴェル13世") {
       return VAULT_CHARACTER_IMAGE_FOLDERS[character] || `Umbrella Parade/02_キャラクター資料/${character}/人物画像`;
+    }
+
+    function vaultMangaImageFolder(character = val("character") || "ヴェル13世", status = "予約済み") {
+      const base = VAULT_MANGA_IMAGE_FOLDERS[character] || `Umbrella Parade/漫画/${character}/画像`;
+      return [base, status].filter(Boolean).join("/");
     }
 
     function vaultEndpoint(pathname, params = {}) {
@@ -7316,6 +7330,22 @@ ${text}`;
       const normalized = raw.replace(/^file:\/+/i, "").replace(/[\\/]+$/g, "");
       const parts = normalized.split(/[\\/]+/).filter(Boolean);
       return (parts.length ? parts.slice(-3).join("＞") : normalized) || normalized;
+    }
+
+    function normalizeVaultRelativePath(pathValue = "") {
+      return String(pathValue || "").replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/g, "").trim();
+    }
+
+    function vaultParentPath(pathValue = "") {
+      const parts = normalizeVaultRelativePath(pathValue).split("/").filter(Boolean);
+      parts.pop();
+      return parts.join("/");
+    }
+
+    function vaultAbsolutePath(root, relativePath = "") {
+      const cleanRoot = String(root || "").replace(/[\\/]+$/g, "");
+      const cleanRelative = normalizeVaultRelativePath(relativePath);
+      return cleanRelative ? `${cleanRoot}/${cleanRelative}` : cleanRoot;
     }
 
     function setImageDownloadFolderDisplay({ folder = "", handleName = "", mode = "" } = {}) {
@@ -11577,6 +11607,107 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       }
     }
 
+    async function openVaultDownloadFolderPicker(startPath = "") {
+      const character = activeCharacter();
+      const initialPath = normalizeVaultRelativePath(startPath || vaultMangaImageFolder(character, "予約済み"));
+      async function renderFolder(pathValue) {
+        const currentPath = normalizeVaultRelativePath(pathValue);
+        galleryTargetId = null;
+        $("galleryTitle").textContent = `${character}のVPS保存先フォルダーを選ぶ`;
+        const body = $("galleryBody");
+        body.innerHTML = `<div style="padding:20px;color:var(--muted);text-align:center;">VPSフォルダーを読み込んでいます…</div>`;
+        $("imageGalleryModal").classList.add("open");
+        let json;
+        try {
+          json = await vaultJson("/vault-list", { path: currentPath });
+        } catch (error) {
+          if (String(error.message || "").includes("404")) {
+            await ensureVaultFolder(currentPath);
+            json = await vaultJson("/vault-list", { path: currentPath });
+          } else {
+            throw error;
+          }
+        }
+        body.innerHTML = "";
+
+        const folderLabel = document.createElement("div");
+        folderLabel.className = "gallery-cat-label";
+        folderLabel.textContent = `現在のVPSフォルダー: ${currentPath || "Obsidian Folder"}`;
+        body.appendChild(folderLabel);
+
+        const actions = document.createElement("div");
+        actions.className = "actions";
+        const chooseButton = document.createElement("button");
+        chooseButton.className = "generate-ai-btn";
+        chooseButton.type = "button";
+        chooseButton.textContent = "このフォルダーを保存先にする";
+        chooseButton.addEventListener("click", async () => {
+          const folder = vaultAbsolutePath(json.root, currentPath);
+          await forgetImageDownloadDirectoryHandle(character);
+          saveImageDownloadFolder(character, folder, false);
+          setImageDownloadFolderDisplay({ folder, mode: "path" });
+          closeGallery();
+          setGeneratedImageStatus(`${character} のVPS保存先を設定しました: ${formatDownloadFolderDisplay(folder)}`);
+        });
+        actions.appendChild(chooseButton);
+
+        if (currentPath) {
+          const upButton = document.createElement("button");
+          upButton.className = "secondary";
+          upButton.type = "button";
+          upButton.textContent = "一つ上へ";
+          upButton.addEventListener("click", () => renderFolder(vaultParentPath(currentPath)));
+          actions.appendChild(upButton);
+        }
+
+        const createButton = document.createElement("button");
+        createButton.className = "secondary";
+        createButton.type = "button";
+        createButton.textContent = "ここに新規フォルダー作成";
+        createButton.addEventListener("click", async () => {
+          const name = prompt("作成するフォルダー名を入力してください", "予約済み");
+          if (!name || !name.trim()) return;
+          await vaultJson("/vault-create-folder", {}, {
+            method: "POST",
+            body: JSON.stringify({ path: currentPath, name: name.trim() })
+          });
+          await renderFolder(currentPath);
+        });
+        actions.appendChild(createButton);
+        body.appendChild(actions);
+
+        const folders = (json.entries || []).filter((entry) => entry.type === "directory");
+        if (!folders.length) {
+          const empty = document.createElement("p");
+          empty.className = "hint";
+          empty.textContent = "この中にフォルダーはありません。このフォルダー自体を保存先にするか、新規フォルダーを作成してください。";
+          body.appendChild(empty);
+          return;
+        }
+
+        const cells = document.createElement("div");
+        cells.className = "gallery-cells";
+        folders.forEach((entry) => {
+          const cell = document.createElement("div");
+          cell.className = "gallery-cell no-img";
+          const name = document.createElement("div");
+          name.className = "gallery-cell-name";
+          name.textContent = `📁 ${entry.name}`;
+          cell.appendChild(name);
+          cell.addEventListener("click", () => renderFolder(entry.path));
+          cells.appendChild(cell);
+        });
+        body.appendChild(cells);
+      }
+
+      try {
+        await renderFolder(initialPath);
+      } catch (error) {
+        console.error(error);
+        setGeneratedImageStatus(`VPS保存先フォルダー選択エラー: ${error.message}`, "err");
+      }
+    }
+
     async function saveGeneratedImageToDownloadFolder(image, filename, folder) {
       const response = await fetch(`${xLocalServerUrl()}/save-image-to-folder`, {
         method: "POST",
@@ -12780,6 +12911,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     $("downloadGeneratedImage").addEventListener("click", downloadGeneratedImage);
     $("clearGeneratedImage").addEventListener("click", clearGeneratedImage);
     $("chooseImageDownloadFolder").addEventListener("click", chooseImageDownloadFolder);
+    $("chooseVaultImageDownloadFolder").addEventListener("click", () => openVaultDownloadFolderPicker());
     $("saveImageDownloadFolder").addEventListener("click", () => saveCurrentImageDownloadFolder(activeCharacter()));
     $("clearImageDownloadFolder").addEventListener("click", () => clearImageDownloadSelection(activeCharacter()));
     $("imageDownloadBaseName").addEventListener("input", () => saveImageDownloadNameConfig(activeCharacter()));
@@ -13696,6 +13828,49 @@ ${JSON.stringify({
       return `(?:${panelNumber}|${fullWidth}|${kanji})\\s*コマ目|(?:${panelNumber}|${fullWidth}|${kanji})\\s*コマ|第\\s*(?:${panelNumber}|${fullWidth}|${kanji})\\s*コマ`;
     }
 
+    function normalizeManualSectionLine(line) {
+      return String(line || "")
+        .trim()
+        .replace(/^[>　\s]*[#＃]{1,6}\s*/, "")
+        .replace(/^[>　\s]*[・･\-－ー*＊●○〇■□◆◇▶︎▷]+[　\s]*/, "")
+        .replace(/\*\*/g, "")
+        .replace(/^【(.+)】$/, "$1")
+        .trim();
+    }
+
+    function manualPanelIdFromLabel(label) {
+      const clean = String(label || "")
+        .replace(/[　\s]/g, "")
+        .replace(/の?(?:内容|場面|シーン|描写|台本)$/g, "");
+      const map = {
+        "1": "p1", "１": "p1", "一": "p1", "①": "p1",
+        "2": "p2", "２": "p2", "二": "p2", "②": "p2",
+        "3": "p3", "３": "p3", "三": "p3", "③": "p3",
+        "4": "p4", "４": "p4", "四": "p4", "④": "p4"
+      };
+      const simple = clean.match(/^第?([一二三四１２３４1-4①②③④])コマ目?$/);
+      return simple ? map[simple[1]] || "" : "";
+    }
+
+    function detectManualSectionLine(line) {
+      const normalized = normalizeManualSectionLine(line);
+      if (!normalized) return null;
+      let match = normalized.match(/^(.{1,40}?)\s*[:：]\s*([\s\S]*)$/);
+      if (!match) {
+        const panelOnly = manualPanelIdFromLabel(normalized);
+        return panelOnly ? { id: panelOnly, value: "" } : null;
+      }
+      const label = match[1].trim();
+      const value = match[2] || "";
+      const labelKey = label.replace(/[　\s]/g, "");
+      if (/^(タイトル|題名|見出し)$/.test(labelKey)) return { id: "title", value };
+      if (/^(サブコピー|副題|小見出し)$/.test(labelKey)) return { id: "subtitle", value };
+      if (/^(テーマ|主題)$/.test(labelKey)) return { id: "theme", value };
+      if (/^(狙い|目的|ねらい|読者に起こしたい変化)$/.test(labelKey)) return { id: "aim", value };
+      const panelId = manualPanelIdFromLabel(labelKey);
+      return panelId ? { id: panelId, value } : null;
+    }
+
     function extractManualPanelBlock(text, panelNumber) {
       const regex = new RegExp(`(?:^|\\n)\\s*(?:${manualPanelLabelPattern(panelNumber)})\\s*[:：]\\s*([\\s\\S]*?)${manualStructuredBoundary()}`);
       const match = String(text || "").match(regex);
@@ -13719,7 +13894,7 @@ ${JSON.stringify({
 
     function parseManualIdeaSeedFields(text) {
       const source = String(text || "").replace(/\r/g, "");
-      return {
+      const fields = {
         title: extractManualLabeledValue(source, ["タイトル", "題名"]),
         subtitle: extractManualLabeledValue(source, ["サブコピー", "副題"]),
         theme: extractManualLabeledValue(source, ["テーマ"]),
@@ -13729,6 +13904,26 @@ ${JSON.stringify({
         p3: normalizeManualPanelBlock(extractManualPanelBlock(source, 3)),
         p4: normalizeManualPanelBlock(extractManualPanelBlock(source, 4))
       };
+      let currentId = "";
+      const buckets = {};
+      source.split("\n").forEach((line) => {
+        const detected = detectManualSectionLine(line);
+        if (detected) {
+          currentId = detected.id;
+          buckets[currentId] = buckets[currentId] || [];
+          if (String(detected.value || "").trim()) buckets[currentId].push(detected.value);
+          return;
+        }
+        if (currentId && String(line || "").trim()) {
+          buckets[currentId].push(line);
+        }
+      });
+      Object.entries(buckets).forEach(([id, lines]) => {
+        const value = cleanManualStructuredValue(lines.join("\n"));
+        if (!value) return;
+        fields[id] = id.startsWith("p") ? normalizeManualPanelBlock(value) : value;
+      });
+      return fields;
     }
 
     function panelSceneAndSpeech(value) {
