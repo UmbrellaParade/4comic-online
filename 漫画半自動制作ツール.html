@@ -1592,6 +1592,13 @@
             <p class="hint" id="imagePatternStatus">画像パターン未保存</p>
           </div>
           <div class="actions">
+            <button id="uploadCharacterImagesToVault" class="secondary" type="button">VPSへキャラ画像アップロード</button>
+            <button id="importCharacterImagesFromVault" class="secondary" type="button">VPSからキャラ画像登録</button>
+            <button id="refreshServerRuntimeImages" class="secondary" type="button">VPS登録画像を再読込</button>
+            <button id="openVaultBrowserForCharacter" class="secondary" type="button">VPS保管庫を開く</button>
+          </div>
+          <p class="hint">キャラ画像を長く使う場合は、まずVPSのObsidian Folderへ保存してから登録するのがおすすめです。スマホ・PCどちらから開いても同じ画像を使えます。</p>
+          <div class="actions">
             <button id="loadImageFolder" class="secondary" type="button">端末の画像フォルダー読込</button>
             <button id="loadImageFiles" class="secondary" type="button">端末の画像ファイル追加</button>
             <select id="imageFileCategory" style="font-size:12px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);">
@@ -1605,7 +1612,8 @@
           </div>
           <input id="imageFolderInput" type="file" accept="image/*" multiple webkitdirectory style="display:none">
           <input id="imageFileInput" type="file" accept="image/*" multiple style="display:none">
-          <p class="hint">この2つはスマホ/PC本体の画像をツールへ登録するボタンです。VPSのObsidian Folderを見る場合は、漫画画像生成欄の「VPS画像を取り込む」か、保管庫ページを使ってください。</p>
+          <input id="vaultCharacterImageUploadInput" type="file" accept="image/*" multiple style="display:none">
+          <p class="hint">端末ボタンはスマホ/PC本体の画像を直接ツールへ登録します。VPS本体に残したい画像は「VPSへキャラ画像アップロード」を使ってください。</p>
           <p class="hint" id="runtimeImageStatus">追加読み込み画像なし</p>
           <p class="hint" id="imageSetStatus">画像セット未保存</p>
           <p class="hint" id="presetSource"></p>
@@ -4170,7 +4178,7 @@
     }
 
     function hostedImageUnavailableHtml(label = "参考画像") {
-      return `<div class="preview-empty">${label}はオンライン保存されていません。<br><small style="font-size:11px;opacity:.72">「端末の画像ファイル追加」か「端末の画像フォルダー読込」で読み込んだ画像を選んでください。</small></div>`;
+      return `<div class="preview-empty">${label}はオンライン保存されていません。<br><small style="font-size:11px;opacity:.72">「VPSへキャラ画像アップロード」か「VPSからキャラ画像登録」でオンライン保存した画像を選んでください。</small></div>`;
     }
 
     function runtimeCategory(file) {
@@ -4283,7 +4291,7 @@
         character: image.character || "ヴェル13世",
         name: image.name || "online-reference.png",
         path: serverRuntimePath(image.id),
-        localPath: image.name || "",
+        localPath: image.localPath || image.name || "",
         category: image.category || "オンライン保存画像",
         runtime: true,
         serverPersisted: true,
@@ -4333,6 +4341,229 @@
         createdAt: image.createdAt || new Date().toISOString(),
       }).catch((error) => console.warn("オンライン画像のブラウザバックアップに失敗しました。", error))));
       return saved;
+    }
+
+    const VAULT_CHARACTER_IMAGE_FOLDERS = {
+      "ヴェル13世": "Umbrella Parade/02_キャラクター資料/ヴェル13世/人物画像",
+      "カーラ・マンソン": "Umbrella Parade/02_キャラクター資料/カーラ・マンソン/人物画像",
+      "べるぼ": "Umbrella Parade/02_キャラクター資料/べるぼ/人物画像",
+      "アマモリ": "Umbrella Parade/02_キャラクター資料/アマモリ/人物画像",
+      "アマヨミ": "Umbrella Parade/02_キャラクター資料/アマヨミ/人物画像"
+    };
+
+    function vaultCharacterImageFolder(character = val("character") || "ヴェル13世") {
+      return VAULT_CHARACTER_IMAGE_FOLDERS[character] || `Umbrella Parade/02_キャラクター資料/${character}/人物画像`;
+    }
+
+    function vaultEndpoint(pathname, params = {}) {
+      const url = new URL(pathname, scheduleServerUrl());
+      Object.entries(params || {}).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) url.searchParams.set(key, value);
+      });
+      return url.toString();
+    }
+
+    async function vaultJson(pathname, params = {}, options = {}) {
+      const response = await fetch(vaultEndpoint(pathname, params), {
+        ...options,
+        headers: {
+          ...cloudSyncHeaders(),
+          ...(options.headers || {})
+        }
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json.ok) throw new Error(json.error || `HTTP ${response.status}`);
+      return json;
+    }
+
+    async function ensureVaultFolder(path) {
+      return vaultJson("/vault-ensure-folder", {}, {
+        method: "POST",
+        body: JSON.stringify({ path })
+      });
+    }
+
+    async function listVaultImagesRecursive(rootPath, maxDepth = 4) {
+      const images = [];
+      const queue = [{ path: rootPath || "", depth: 0 }];
+      const seen = new Set();
+      while (queue.length) {
+        const current = queue.shift();
+        const key = current.path || "";
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const json = await vaultJson("/vault-list", { path: key });
+        (json.entries || []).forEach((entry) => {
+          if (entry.type === "directory" && current.depth < maxDepth) {
+            queue.push({ path: entry.path, depth: current.depth + 1 });
+          } else if (entry.type === "file" && entry.image) {
+            images.push(entry);
+          }
+        });
+      }
+      return images.sort((a, b) => String(b.modifiedAt || "").localeCompare(String(a.modifiedAt || "")));
+    }
+
+    function blobToDataUrl(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error || new Error("VPS画像を読み込めませんでした。"));
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    async function vaultImageDataUrl(vaultPath) {
+      const response = await fetch(vaultEndpoint("/vault-file", { path: vaultPath }), {
+        headers: cloudSyncHeaders()
+      });
+      if (!response.ok) throw new Error(`VPS画像を開けませんでした: HTTP ${response.status}`);
+      return blobToDataUrl(await response.blob());
+    }
+
+    function selectImportedRuntimeImage(image, character, category) {
+      if (!image || !image.path) return;
+      const isManga = MANGA_CATEGORIES.includes(category || image.category || "") || imageLooksLikeMangaOutput(image);
+      if (isManga) {
+        $("mangaRefImage").value = image.path;
+      } else {
+        $("referenceImage").value = image.path;
+      }
+      updateProfilePanel();
+      if (isManga) {
+        $("mangaRefImage").value = image.path;
+      } else {
+        $("referenceImage").value = image.path;
+      }
+      updatePreview();
+      updateMangaRefPreview();
+      updateAnglePreviews();
+      saveCharacterImageSet(false);
+      render();
+    }
+
+    async function registerVaultImageAsRuntimeImage(entry, dataUrl, category = null) {
+      const character = val("character") || "ヴェル13世";
+      const selectedCategory = category || $("imageFileCategory")?.value || "人物画像";
+      const localPath = `VPS:${entry.path}`;
+      const existing = (runtimeImagesByCharacter[character] || []).find((image) => image.localPath === localPath);
+      if (existing) {
+        selectImportedRuntimeImage(existing, character, selectedCategory);
+        $("statusText").textContent = `${existing.name} は既にVPS登録画像にあります。参考画像にセットしました。`;
+        setTimeout(() => $("statusText").textContent = "", 2600);
+        return existing;
+      }
+
+      const saved = await uploadRuntimeImagesToServer(character, [{
+        name: entry.name || String(entry.path || "").split("/").pop() || "vault-image.png",
+        localPath,
+        category: selectedCategory,
+        dataUrl
+      }]);
+      if (!saved.length) throw new Error("VPS画像のオンライン登録に失敗しました。");
+      runtimeImagesByCharacter[character] = runtimeImagesByCharacter[character] || [];
+      const image = saved[0];
+      runtimeImagesByCharacter[character].push(image);
+      selectImportedRuntimeImage(image, character, selectedCategory);
+      updateRuntimeImageStatus();
+      $("statusText").textContent = `${character}に ${image.name} をVPSから登録しました。`;
+      setTimeout(() => $("statusText").textContent = "", 3000);
+      return image;
+    }
+
+    async function uploadCharacterImagesToVault(event) {
+      const files = Array.from((event?.target?.files) || []);
+      if (event?.target) event.target.value = "";
+      if (!files.length) return;
+      const character = val("character") || "ヴェル13世";
+      const folder = vaultCharacterImageFolder(character);
+      const category = $("imageFileCategory")?.value || "人物画像";
+      $("statusText").textContent = `${character}の画像をVPSへアップロード中です…`;
+      await ensureVaultFolder(folder);
+      let imported = 0;
+      for (const file of files) {
+        if (!file.type.startsWith("image/") && !IMAGE_FILE_RE.test(file.name)) continue;
+        const dataUrl = await fileToDataUrl(file);
+        const json = await vaultJson("/vault-upload-file", {}, {
+          method: "POST",
+          body: JSON.stringify({ path: folder, name: file.name, dataUrl })
+        });
+        const entry = json.file || { path: [folder, file.name].join("/"), name: file.name };
+        await registerVaultImageAsRuntimeImage(entry, dataUrl, category);
+        imported += 1;
+      }
+      updateRuntimeImageStatus();
+      $("statusText").textContent = imported
+        ? `${character}の画像を${imported}枚VPSへ保存し、ツールにも登録しました。`
+        : "読み込める画像がありませんでした。";
+      setTimeout(() => $("statusText").textContent = "", 3200);
+    }
+
+    async function openVaultCharacterImageGallery() {
+      const character = val("character") || "ヴェル13世";
+      const folder = vaultCharacterImageFolder(character);
+      galleryTargetId = null;
+      $("galleryTitle").textContent = `${character}のVPSキャラ画像を登録`;
+      const body = $("galleryBody");
+      body.innerHTML = `<div style="padding:20px;color:var(--muted);text-align:center;">VPSのObsidian Folderを確認しています…</div>`;
+      $("imageGalleryModal").classList.add("open");
+      try {
+        const images = await listVaultImagesRecursive(folder, 4);
+        body.innerHTML = "";
+        const folderLabel = document.createElement("div");
+        folderLabel.className = "gallery-cat-label";
+        folderLabel.textContent = `VPSフォルダー: ${folder}`;
+        body.appendChild(folderLabel);
+        if (!images.length) {
+          const empty = document.createElement("p");
+          empty.className = "hint";
+          empty.textContent = "このVPSフォルダーに画像が見つかりませんでした。先に「VPSへキャラ画像アップロード」か「VPS保管庫を開く」から画像を追加してください。";
+          body.appendChild(empty);
+          return;
+        }
+        const cells = document.createElement("div");
+        cells.className = "gallery-cells";
+        images.forEach((entry) => {
+          const cell = document.createElement("div");
+          cell.className = "gallery-cell";
+          const img = document.createElement("img");
+          img.src = vaultEndpoint("/vault-file", { path: entry.path, key: cloudSyncKeyValue() });
+          img.alt = entry.name;
+          img.onerror = () => cell.classList.add("no-img");
+          const name = document.createElement("div");
+          name.className = "gallery-cell-name";
+          const parent = String(entry.path || "").split("/").slice(-3, -1).join(" / ");
+          name.textContent = parent ? `${entry.name} / ${parent}` : entry.name;
+          cell.appendChild(img);
+          cell.appendChild(name);
+          cell.addEventListener("click", async () => {
+            try {
+              $("statusText").textContent = `${entry.name} をVPSから登録しています…`;
+              const dataUrl = await vaultImageDataUrl(entry.path);
+              await registerVaultImageAsRuntimeImage(entry, dataUrl);
+              closeGallery();
+            } catch (error) {
+              console.error(error);
+              $("statusText").textContent = `VPS画像登録エラー: ${error.message}`;
+            }
+          });
+          cells.appendChild(cell);
+        });
+        body.appendChild(cells);
+      } catch (error) {
+        console.error(error);
+        body.innerHTML = `<div style="padding:20px;color:var(--muted);text-align:center;">VPS画像を読めませんでした。クラウド同期キーを確認してください。<br>${String(error.message || error)}</div>`;
+      }
+    }
+
+    async function refreshServerRuntimeImagesForCharacter() {
+      const character = val("character") || "ヴェル13世";
+      $("statusText").textContent = `${character}のVPS登録画像を再読込しています…`;
+      await loadServerRuntimeImages();
+      updateProfilePanel();
+      updateRuntimeImageStatus();
+      $("statusText").textContent = `${character}のVPS登録画像を再読込しました。`;
+      setTimeout(() => $("statusText").textContent = "", 2200);
     }
 
     async function deleteServerRuntimeImage(id, character = val("character") || "ヴェル13世") {
@@ -5346,7 +5577,7 @@
       });
 
       if (images.length === 0) {
-        body.innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center;">オンラインで使える画像がありません。端末の画像ファイル追加、または端末の画像フォルダー読込で参考画像を読み込んでください。</div>';
+        body.innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center;">オンラインで使える画像がありません。VPSへキャラ画像アップロード、またはVPSからキャラ画像登録で参考画像を追加してください。</div>';
       }
 
       $("imageGalleryModal").classList.add("open");
@@ -12380,6 +12611,16 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     $("saveImagePattern").addEventListener("click", () => saveImagePattern(true));
     $("loadImagePattern").addEventListener("click", () => loadImagePattern(true));
     $("deleteImagePattern").addEventListener("click", deleteImagePattern);
+    $("uploadCharacterImagesToVault").addEventListener("click", () => $("vaultCharacterImageUploadInput").click());
+    $("importCharacterImagesFromVault").addEventListener("click", () => openVaultCharacterImageGallery().catch((error) => {
+      console.error(error);
+      $("statusText").textContent = `VPS画像登録エラー: ${error.message}`;
+    }));
+    $("refreshServerRuntimeImages").addEventListener("click", () => refreshServerRuntimeImagesForCharacter().catch((error) => {
+      console.error(error);
+      $("statusText").textContent = `VPS登録画像の再読込エラー: ${error.message}`;
+    }));
+    $("openVaultBrowserForCharacter").addEventListener("click", openVaultBrowser);
     $("loadImageFolder").addEventListener("click", () => $("imageFolderInput").click());
     $("loadImageFiles").addEventListener("click", () => $("imageFileInput").click());
     $("recategorizeImages").addEventListener("click", () => recategorizeRuntimeImages().catch((e) => {
@@ -12401,6 +12642,12 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         $("statusText").textContent = `画像保存エラー: ${error.message}`;
       });
       event.target.value = "";
+    });
+    $("vaultCharacterImageUploadInput").addEventListener("change", (event) => {
+      uploadCharacterImagesToVault(event).catch((error) => {
+        console.error(error);
+        $("statusText").textContent = `VPSアップロードエラー: ${error.message}`;
+      });
     });
     $("saveIdeaStock").addEventListener("click", () => saveIdeaStock(false));
     $("stageCurrentMangaIdea").addEventListener("click", () => saveCurrentInputAsMangaIdea(true, "manual_input_button"));

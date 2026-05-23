@@ -689,6 +689,13 @@ function createVaultFolder(payload = {}) {
   return { path: target.relativePath };
 }
 
+function ensureVaultFolder(payload = {}) {
+  const target = safeVaultFilePath(payload.path || "");
+  if (!target.relativePath) return { path: "" };
+  fs.mkdirSync(target.fullPath, { recursive: true });
+  return { path: target.relativePath };
+}
+
 function uploadVaultFile(payload = {}) {
   if (!payload.dataUrl) {
     const error = new Error("追加するファイルデータがありません。");
@@ -2348,6 +2355,7 @@ function publicRuntimeImage(image) {
     id: image.id || "",
     character: image.character || "",
     name: image.name || "",
+    localPath: image.localPath || "",
     category: image.category || "オンライン保存画像",
     dataUrl: image.dataUrl || "",
     createdAt: image.createdAt || "",
@@ -2418,6 +2426,7 @@ function runtimeImageFromPayload(payload, character) {
     id: `srv_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`,
     character: String(payload.character || character || "").trim() || "ヴェル13世",
     name: filename,
+    localPath: String(payload.localPath || payload.path || payload.name || "").trim(),
     category: String(payload.category || "オンライン保存画像").trim() || "オンライン保存画像",
     dataUrl,
     byteSize: media.buffer.length,
@@ -3474,6 +3483,19 @@ const server = http.createServer(async (req, res) => {
     } catch (error) {
       rememberError(error, { route: "/vault-create-folder" });
       sendJson(res, error.status || 500, { ok: false, error: error.message || "Vault folder create error." });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && requestUrl.pathname === "/vault-ensure-folder") {
+    try {
+      ensureVaultAccess(req, requestUrl);
+      const payload = JSON.parse(await readBody(req) || "{}");
+      const folder = ensureVaultFolder(payload);
+      sendJson(res, 200, { ok: true, folder });
+    } catch (error) {
+      rememberError(error, { route: "/vault-ensure-folder" });
+      sendJson(res, error.status || 500, { ok: false, error: error.message || "Vault folder ensure error." });
     }
     return;
   }
