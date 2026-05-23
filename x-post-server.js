@@ -1655,6 +1655,23 @@ async function xApiJson(url, token, body = null, method = "POST") {
   return json;
 }
 
+function summarizeXErrorBody(body) {
+  if (!body || typeof body !== "object") return null;
+  return {
+    title: body.title || "",
+    detail: body.detail || "",
+    type: body.type || "",
+    status: body.status || "",
+    errors: Array.isArray(body.errors)
+      ? body.errors.slice(0, 3).map((error) => ({
+          title: error.title || "",
+          detail: error.detail || "",
+          message: error.message || ""
+        }))
+      : []
+  };
+}
+
 async function uploadImageToX(token, imageDataUrl) {
   const { media, mediaType } = dataUrlToXMedia(imageDataUrl);
   const json = await xApiJson("https://api.x.com/2/media/upload", token, {
@@ -1670,10 +1687,24 @@ async function uploadImageToX(token, imageDataUrl) {
 }
 
 async function createXPost(token, text, mediaId, madeWithAi) {
-  const body = { text };
-  if (mediaId) body.media = { media_ids: [String(mediaId)] };
+  const baseBody = { text };
+  if (mediaId) baseBody.media = { media_ids: [String(mediaId)] };
+  const body = { ...baseBody };
   if (madeWithAi) body.made_with_ai = true;
-  const json = await xApiJson("https://api.x.com/2/tweets", token, body);
+  let json;
+  try {
+    json = await xApiJson("https://api.x.com/2/tweets", token, body);
+  } catch (error) {
+    if (madeWithAi && error.status === 403) {
+      log("X_POST_RETRY_WITHOUT_AI_LABEL", {
+        status: error.status,
+        detail: summarizeXErrorBody(error.body)
+      });
+      json = await xApiJson("https://api.x.com/2/tweets", token, baseBody);
+    } else {
+      throw error;
+    }
+  }
   const postId = json.data && json.data.id;
   if (!postId) {
     throw new Error("X投稿結果からPost IDを取得できませんでした。");
@@ -4036,7 +4067,8 @@ const server = http.createServer(async (req, res) => {
         title: payload.title || "",
         textLength: text.length,
         imageByteSize: payload.imageByteSize || null,
-        compressed: !!payload.compressed
+        compressed: !!payload.compressed,
+        madeWithAi: !!payload.madeWithAi
       });
       const mediaId = await uploadImageToX(token, payload.imageDataUrl);
       log("MEDIA_UPLOADED", { mediaId });
