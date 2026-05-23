@@ -1784,7 +1784,6 @@
               <select id="mangaIdeaSelect" class="workflow-list compact-list" size="4"></select>
             </label>
             <div class="actions">
-              <button id="stageCurrentMangaIdea" class="generate-ai-btn" type="button">今の入力欄を画像生成にセット</button>
               <button id="deleteMangaIdeaStock" class="secondary" type="button">選択中の未作成ネタを削除</button>
             </div>
             <div id="mangaIdeaStatus" class="image-status-line"></div>
@@ -9358,12 +9357,38 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       return updateReservationById(item.id, patch) || { ...item, ...patch };
     }
 
+    function xTextWeight(text) {
+      return Array.from(String(text || "")).reduce((total, char) => {
+        const code = char.codePointAt(0) || 0;
+        if (/\s/.test(char)) return total + 1;
+        if (code <= 0x10ff) return total + 1;
+        if (code >= 0x2000 && code <= 0x206f) return total + 1;
+        if (code >= 0xff61 && code <= 0xff9f) return total + 1;
+        return total + 2;
+      }, 0);
+    }
+
+    function trimXText(text, maxWeight = 260) {
+      const source = String(text || "").trim();
+      if (xTextWeight(source) <= maxWeight) return source;
+      const suffix = "...";
+      const suffixWeight = xTextWeight(suffix);
+      let result = "";
+      let weight = 0;
+      for (const char of Array.from(source)) {
+        const charWeight = xTextWeight(char);
+        if (weight + charWeight + suffixWeight > maxWeight) break;
+        result += char;
+        weight += charWeight;
+      }
+      return `${result.trim()}${suffix}`;
+    }
+
     function buildXPostText(item) {
       if (!item) return "";
       applyItem(item);
       const text = extractPlatformCaption(caption(data()), "X");
-      if (text.length <= 280) return text;
-      return `${text.slice(0, 276).trim()}...`;
+      return trimXText(text, 260);
     }
 
     function removeHashtagsFromText(text) {
