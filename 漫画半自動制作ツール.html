@@ -6240,6 +6240,7 @@ ${text}`;
     const X_OAUTH_CLIENT_ID_KEY_PREFIX = "umbrellaMangaXOAuthClientIdByCharacter";
     const X_OAUTH_CLIENT_SECRET_KEY_PREFIX = "umbrellaMangaXOAuthClientSecretByCharacter";
     const X_OAUTH_STATE_KEY = "umbrellaMangaXOAuthState";
+    const X_OAUTH_STATE_CHARACTER_KEY = "umbrellaMangaXOAuthStateCharacter";
     const X_OAUTH_SCOPES = "tweet.read tweet.write users.read media.write offline.access";
     const CLOUD_SYNC_KEY = "umbrellaMangaCloudSyncKey";
     const WP_SITE_URL_KEY = "umbrellaMangaWpSiteUrl";
@@ -8171,6 +8172,11 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         activeScheduleCharacter = item.character;
         if (item.date) saveScheduledDateForCharacter(item.character, item.date);
         if (item.time) saveScheduledTimeForCharacter(item.character, item.time);
+        loadXOAuthSettings(item.character);
+        loadXAccessToken(item.character);
+        restoreXOAuthTokenFromServer(item.character, { showMessage: false }).catch((error) => {
+          console.warn("予約キャラのX OAuth復元に失敗しました。", error);
+        });
       }
     }
 
@@ -8505,8 +8511,8 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       }
     }
 
-    async function checkXToken() {
-      const targetCharacter = xTokenCharacter();
+    async function checkXToken(character = xOAuthOperationCharacter()) {
+      const targetCharacter = xTokenCharacter(character);
       let token = "";
       try {
         token = await getUsableXAccessTokenForCharacter(targetCharacter, true);
@@ -8603,7 +8609,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
 
     function updateXOAuthSavedStatus(character = val("character")) {
       const targetCharacter = xTokenCharacter(character);
-      const state = currentXOAuthState();
+      const state = currentXOAuthStateForCharacter(targetCharacter);
       if (state) {
         setXOAuthStatus("取得待ち");
         return;
@@ -8644,15 +8650,33 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       return localStorage.getItem(X_OAUTH_STATE_KEY) || sessionStorage.getItem(X_OAUTH_STATE_KEY) || "";
     }
 
-    function storeXOAuthState(state) {
+    function currentXOAuthStateCharacter() {
+      return localStorage.getItem(X_OAUTH_STATE_CHARACTER_KEY) || sessionStorage.getItem(X_OAUTH_STATE_CHARACTER_KEY) || "";
+    }
+
+    function currentXOAuthStateForCharacter(character = xOAuthOperationCharacter()) {
+      const state = currentXOAuthState();
+      if (!state) return "";
+      const storedCharacter = currentXOAuthStateCharacter();
+      const targetCharacter = xTokenCharacter(character);
+      if (storedCharacter && storedCharacter !== targetCharacter) return "";
+      return state;
+    }
+
+    function storeXOAuthState(state, character = xOAuthOperationCharacter()) {
       if (!state) return;
+      const targetCharacter = xTokenCharacter(character);
       localStorage.setItem(X_OAUTH_STATE_KEY, state);
       sessionStorage.setItem(X_OAUTH_STATE_KEY, state);
+      localStorage.setItem(X_OAUTH_STATE_CHARACTER_KEY, targetCharacter);
+      sessionStorage.setItem(X_OAUTH_STATE_CHARACTER_KEY, targetCharacter);
     }
 
     function clearXOAuthState() {
       localStorage.removeItem(X_OAUTH_STATE_KEY);
       sessionStorage.removeItem(X_OAUTH_STATE_KEY);
+      localStorage.removeItem(X_OAUTH_STATE_CHARACTER_KEY);
+      sessionStorage.removeItem(X_OAUTH_STATE_CHARACTER_KEY);
     }
 
     function xRefreshTokenKey(character = val("character")) {
@@ -8765,7 +8789,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     async function startXOAuthLogin() {
       if (window.__umbrellaXOAuthStarting) return;
       window.__umbrellaXOAuthStarting = true;
-      const targetCharacter = xTokenCharacter();
+      const targetCharacter = xOAuthOperationCharacter();
       clearXOAuthState();
       let popup = null;
       try {
@@ -8802,7 +8826,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         });
         const json = await response.json().catch(() => ({}));
         if (!response.ok || !json.ok) throw new Error(json.error || stringifyXDetail(json.detail) || `HTTP ${response.status}`);
-        storeXOAuthState(json.state);
+        storeXOAuthState(json.state, targetCharacter);
         setXOAuthStatus("X認可待ち");
         if (popup && !popup.closed) {
           popup.location.href = json.authorizeUrl;
@@ -8811,7 +8835,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
           setXPostStatus(`${targetCharacter}用のXログイン画面をこのタブで開きます。認可後、ツールを開き直して「OAuth取得結果確認」を押してください。`);
           window.location.href = json.authorizeUrl;
         }
-        pollXOAuthResult(json.state, 90);
+        pollXOAuthResult(json.state, 90, targetCharacter);
       } catch (error) {
         if (popup && !popup.closed) popup.close();
         setXOAuthStatus("取得エラー");
@@ -8828,9 +8852,9 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       return json;
     }
 
-    async function checkXOAuthResult(showPending = false) {
-      const state = currentXOAuthState();
-      const targetCharacter = xTokenCharacter();
+    async function checkXOAuthResult(showPending = false, character = xOAuthOperationCharacter()) {
+      const targetCharacter = xTokenCharacter(character);
+      const state = currentXOAuthStateForCharacter(targetCharacter);
       const latestEndpoint = `${scheduleServerUrl()}/oauth/latest?character=${encodeURIComponent(targetCharacter)}`;
       const endpoint = state
         ? `${scheduleServerUrl()}/oauth/result?state=${encodeURIComponent(state)}`
@@ -8847,9 +8871,13 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
           }
           return false;
         }
-        saveOAuthTokenBundle(json.character || targetCharacter, json.token);
+        if (json.character && json.character !== targetCharacter) {
+          clearXOAuthState();
+          throw new Error(`${targetCharacter}用ではなく、${json.character}用のOAuth結果が返りました。${targetCharacter}を選び直して再取得してください。`);
+        }
+        saveOAuthTokenBundle(targetCharacter, json.token);
         clearXOAuthState();
-        await checkXToken();
+        await checkXToken(targetCharacter);
         return true;
       } catch (error) {
         setXOAuthStatus("取得エラー");
@@ -8858,23 +8886,25 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       }
     }
 
-    function pollXOAuthResult(state, attempts) {
-      if (!state || attempts <= 0 || currentXOAuthState() !== state) return;
+    function pollXOAuthResult(state, attempts, character = xOAuthOperationCharacter()) {
+      const targetCharacter = xTokenCharacter(character);
+      if (!state || attempts <= 0 || currentXOAuthStateForCharacter(targetCharacter) !== state) return;
       window.setTimeout(async () => {
-        const done = await checkXOAuthResult(false);
-        if (!done) pollXOAuthResult(state, attempts - 1);
+        const done = await checkXOAuthResult(false, targetCharacter);
+        if (!done) pollXOAuthResult(state, attempts - 1, targetCharacter);
       }, 2000);
     }
 
     window.addEventListener("message", (event) => {
       const data = event.data || {};
       if (!data || data.type !== "umbrella-x-oauth") return;
-      if (data.state) storeXOAuthState(data.state);
+      const targetCharacter = xTokenCharacter(data.character || xOAuthOperationCharacter());
+      if (data.state) storeXOAuthState(data.state, targetCharacter);
       setXOAuthStatus("取得結果確認中");
-      checkXOAuthResult(false);
+      checkXOAuthResult(false, targetCharacter);
     });
 
-    async function refreshXAccessToken(character = xTokenCharacter(), showMessage = true) {
+    async function refreshXAccessToken(character = xOAuthOperationCharacter(), showMessage = true) {
       const targetCharacter = xTokenCharacter(character);
       const refreshToken = getXRefreshTokenForCharacter(targetCharacter);
       if (!refreshToken) throw new Error(`${targetCharacter}用のRefresh Tokenがありません。Xログインしてトークン取得をやり直してください。`);
@@ -8925,6 +8955,11 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       return character || "ヴェル13世";
     }
 
+    function xOAuthOperationCharacter() {
+      const item = selectedReservation();
+      return xTokenCharacter((item && item.character) || activeScheduleCharacter || val("character"));
+    }
+
     function xAccessTokenKey(character = val("character")) {
       return `${X_ACCESS_TOKEN_KEY_PREFIX}_${xTokenCharacter(character)}`;
     }
@@ -8945,7 +8980,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     }
 
     function saveXAccessToken() {
-      const targetCharacter = xTokenCharacter();
+      const targetCharacter = xOAuthOperationCharacter();
       let token = "";
       try {
         token = validateXAccessToken($("xAccessToken").value);
@@ -8962,7 +8997,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     }
 
     function clearXAccessToken() {
-      const targetCharacter = xTokenCharacter();
+      const targetCharacter = xOAuthOperationCharacter();
       localStorage.removeItem(xAccessTokenKey(targetCharacter));
       localStorage.removeItem(xRefreshTokenKey(targetCharacter));
       localStorage.removeItem(xTokenExpiresAtKey(targetCharacter));
@@ -12426,7 +12461,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     $("checkXOAuthResult").addEventListener("click", () => checkXOAuthResult(true));
     $("refreshXAccessToken").addEventListener("click", async () => {
       try {
-        await refreshXAccessToken(xTokenCharacter(), true);
+        await refreshXAccessToken(xOAuthOperationCharacter(), true);
       } catch (error) {
         setXPostStatus(`Xトークン更新エラー: ${error.message}`, "err");
       }

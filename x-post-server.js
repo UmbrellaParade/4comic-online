@@ -3693,10 +3693,10 @@ const server = http.createServer(async (req, res) => {
     const character = requestUrl.searchParams.get("character") || "";
     let result = character ? oauthLatestResults.get(character) : null;
     if (!result && character) result = storedOAuthResult(character);
-    if (!result && oauthLatestResults.size === 1) {
+    if (!result && !character && oauthLatestResults.size === 1) {
       result = Array.from(oauthLatestResults.values())[0];
     }
-    if (!result) result = oauthLatestResults.get("__latest__");
+    if (!result && !character) result = oauthLatestResults.get("__latest__");
     if (!result) {
       sendJson(res, 200, { ok: true, ready: false });
     } else {
