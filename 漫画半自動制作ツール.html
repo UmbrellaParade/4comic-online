@@ -1637,6 +1637,10 @@
           <button id="autoGenerate" class="generate-ai-btn" type="button">✨ ネタ自動生成</button>
           <button id="reGenerate" class="secondary" type="button">↺ 再生成</button>
         </div>
+        <div class="check-row">
+          <label><input id="createAutoPostText" type="checkbox"> ネタ用投稿文を作る</label>
+          <label><input id="createIdeaHashtags" type="checkbox" checked> ネタ用ハッシュタグを作る</label>
+        </div>
         <div class="grid cols" id="ideaTitleFields">
           <label>タイトル
             <input id="title" placeholder="例：止まってる日">
@@ -1934,7 +1938,6 @@
                 <textarea id="autoPostText" rows="3" placeholder="ネタ自動生成時に、チェックが入っていればここへ作成されます。"></textarea>
               </label>
               <div class="check-row">
-                <label><input id="createAutoPostText" type="checkbox"> ネタ用投稿文を作る</label>
                 <label><input id="includeAutoPostText" type="checkbox"> ネタ用投稿文も一緒に投稿する</label>
                 <label><input id="includeManualPostText" type="checkbox"> 投稿文も一緒に投稿する</label>
               </div>
@@ -1945,7 +1948,6 @@
                 <textarea id="ideaHashtags" rows="2" placeholder="#止まってる日 #未完成でも進む"></textarea>
               </label>
               <div class="check-row">
-                <label><input id="createIdeaHashtags" type="checkbox" checked> ネタ用ハッシュタグを作る</label>
                 <input id="includeIdeaHashtags" type="checkbox" checked hidden>
                 <label>投稿するハッシュタグ
                   <select id="hashtagPostMode">
