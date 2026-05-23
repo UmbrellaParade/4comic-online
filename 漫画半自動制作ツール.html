@@ -1592,8 +1592,8 @@
             <p class="hint" id="imagePatternStatus">画像パターン未保存</p>
           </div>
           <div class="actions">
-            <button id="loadImageFolder" class="secondary" type="button">画像フォルダー読込</button>
-            <button id="loadImageFiles" class="secondary" type="button">画像ファイル追加</button>
+            <button id="loadImageFolder" class="secondary" type="button">端末の画像フォルダー読込</button>
+            <button id="loadImageFiles" class="secondary" type="button">端末の画像ファイル追加</button>
             <select id="imageFileCategory" style="font-size:12px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);">
               <option value="人物画像">人物画像</option>
               <option value="漫画画像">漫画画像</option>
@@ -1605,6 +1605,7 @@
           </div>
           <input id="imageFolderInput" type="file" accept="image/*" multiple webkitdirectory style="display:none">
           <input id="imageFileInput" type="file" accept="image/*" multiple style="display:none">
+          <p class="hint">この2つはスマホ/PC本体の画像をツールへ登録するボタンです。VPSのObsidian Folderを見る場合は、漫画画像生成欄の「VPS画像を取り込む」か、保管庫ページを使ってください。</p>
           <p class="hint" id="runtimeImageStatus">追加読み込み画像なし</p>
           <p class="hint" id="imageSetStatus">画像セット未保存</p>
           <p class="hint" id="presetSource"></p>
@@ -1784,7 +1785,7 @@
             <div class="actions" id="mangaGenActions">
                 <button id="mangaGenBtn" class="generate-ai-btn" type="button" style="background:#6c5ce7">プロンプトコピー</button>
                 <button id="generateMangaImageBtn" class="secondary" type="button">API生成（認証済み向け）</button>
-                <button id="importGeneratedImage" class="secondary" type="button">外部生成画像を取り込む</button>
+                <button id="importGeneratedImage" class="secondary" type="button">VPS画像を取り込む</button>
               </div>
           </div>
           <details class="subchar-section collapsible-box" id="imageGenerationSettingsPanel" open>
@@ -1836,9 +1837,12 @@
             <summary class="subchar-title collapsible-summary">表示中画像の操作 <span class="collapse-hint">クリックで開閉</span></summary>
             <div class="collapsible-content">
               <div class="check-row">
-                <label><input id="useFixedImportDirectory" type="checkbox" checked> 外部生成画像は固定フォルダーから選ぶ</label>
+                <label><input id="useFixedImportDirectory" type="checkbox" checked> VPS画像は固定フォルダーから選ぶ</label>
               </div>
-              <p class="hint">チェックあり：固定フォルダーを使います。チェックなし：次に「外部生成画像を取り込む」を押した時にフォルダーを変更します。</p>
+              <p class="hint">チェックあり：VPSのObsidian Folderにある画像を開きます。チェックなし：スマホ/PC本体のフォルダーや画像を選びます。</p>
+              <div class="actions">
+                <button id="openVaultBrowser" class="secondary" type="button">VPS保管庫を開く</button>
+              </div>
               <div class="grid cols">
                 <label>ダウンロード保存先フォルダー（キャラ別保存）
                   <input id="imageDownloadFolder" type="text" readonly placeholder="「保存先フォルダーを選ぶ」から選択">
@@ -4166,7 +4170,7 @@
     }
 
     function hostedImageUnavailableHtml(label = "参考画像") {
-      return `<div class="preview-empty">${label}はオンライン保存されていません。<br><small style="font-size:11px;opacity:.72">「画像ファイル追加」か「画像フォルダー読込」で読み込んだ画像を選んでください。</small></div>`;
+      return `<div class="preview-empty">${label}はオンライン保存されていません。<br><small style="font-size:11px;opacity:.72">「端末の画像ファイル追加」か「端末の画像フォルダー読込」で読み込んだ画像を選んでください。</small></div>`;
     }
 
     function runtimeCategory(file) {
@@ -5342,7 +5346,7 @@
       });
 
       if (images.length === 0) {
-        body.innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center;">オンラインで使える画像がありません。画像ファイル追加、または画像フォルダー読込で参考画像を読み込んでください。</div>';
+        body.innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center;">オンラインで使える画像がありません。端末の画像ファイル追加、または端末の画像フォルダー読込で参考画像を読み込んでください。</div>';
       }
 
       $("imageGalleryModal").classList.add("open");
@@ -11598,13 +11602,13 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
 
       const images = await listBrowserImportImages(handle);
       galleryTargetId = null;
-      $("galleryTitle").textContent = `${character}の外部生成画像を選ぶ`;
+      $("galleryTitle").textContent = `${character}の端末フォルダー画像を選ぶ`;
       const body = $("galleryBody");
       body.innerHTML = "";
 
       const folderLabel = document.createElement("div");
       folderLabel.className = "gallery-cat-label";
-      folderLabel.textContent = `固定フォルダー: ${handle.name || "選択済みフォルダー"}`;
+      folderLabel.textContent = `端末フォルダー: ${handle.name || "選択済みフォルダー"}`;
       body.appendChild(folderLabel);
 
       if (!images.length) {
@@ -11613,7 +11617,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         empty.textContent = "このフォルダーに画像が見つかりませんでした。画像を書き出してから、もう一度開いてください。";
         body.appendChild(empty);
         $("imageGalleryModal").classList.add("open");
-        setGeneratedImageStatus(`${character}用の固定フォルダーを保存しました。画像はまだ見つかりませんでした。`);
+        setGeneratedImageStatus(`${character}用の端末フォルダーを保存しました。画像はまだ見つかりませんでした。`);
         return true;
       }
 
@@ -11640,7 +11644,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       });
       body.appendChild(cells);
       $("imageGalleryModal").classList.add("open");
-      setGeneratedImageStatus(`${character}用の固定フォルダーから画像を選べます。変更したい時はチェックを外してから「外部生成画像を取り込む」を押してください。`);
+      setGeneratedImageStatus(`${character}用の端末フォルダーから画像を選べます。VPS画像に戻す時はチェックを入れてください。`);
       return true;
     }
 
@@ -11656,6 +11660,12 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       return url.toString();
     }
 
+    function openVaultBrowser() {
+      const base = xLocalServerUrl();
+      const url = new URL("/vault", base);
+      window.open(url.toString(), "_blank", "noopener");
+    }
+
     async function refreshServerImportDirectoryState(character = activeCharacter(), showMessage = false) {
       try {
         const response = await fetch(importDirectoryEndpoint("/import-directory", { character }), { method: "GET" });
@@ -11666,27 +11676,27 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
           images: Array.isArray(json.images) ? json.images : []
         };
         if (showMessage && json.folder) {
-          setGeneratedImageStatus(`${character}用の固定フォルダー: ${json.folder}`);
+          setGeneratedImageStatus(`${character}用のVPSフォルダー: ${json.folder}`);
         }
         return serverImportDirectoryState[character];
       } catch (error) {
-        console.warn("固定フォルダー情報を読めませんでした。", error);
-        if (showMessage) setGeneratedImageStatus(`固定フォルダー情報を読めませんでした: ${error.message}`, "err");
+        console.warn("VPSフォルダー情報を読めませんでした。", error);
+        if (showMessage) setGeneratedImageStatus(`VPSフォルダー情報を読めませんでした: ${error.message}`, "err");
         return null;
       }
     }
 
     async function setServerImportDirectory() {
       const character = activeCharacter();
-      setGeneratedImageStatus(`${character}用の取り込みフォルダーを選んでください。`);
+      setGeneratedImageStatus(`${character}用の端末側取り込みフォルダーを選んでください。`);
       try {
         await openBrowserImportImageGallery(character, true);
-        if ($("useFixedImportDirectory")) $("useFixedImportDirectory").checked = true;
+        if ($("useFixedImportDirectory")) $("useFixedImportDirectory").checked = false;
         saveDraft();
       } catch (error) {
         if (error && error.name === "AbortError") return;
         console.error(error);
-        setGeneratedImageStatus(`取り込みフォルダーの固定に失敗しました: ${error.message}`, "err");
+        setGeneratedImageStatus(`端末側取り込みフォルダーの固定に失敗しました: ${error.message}`, "err");
       }
     }
 
@@ -11695,13 +11705,13 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       if (!state || !state.folder) return false;
       const images = Array.isArray(state.images) ? state.images : [];
       galleryTargetId = null;
-      $("galleryTitle").textContent = `${character}の外部生成画像を選ぶ`;
+      $("galleryTitle").textContent = `${character}のVPS画像を選ぶ`;
       const body = $("galleryBody");
       body.innerHTML = "";
 
       const folderLabel = document.createElement("div");
       folderLabel.className = "gallery-cat-label";
-      folderLabel.textContent = `固定フォルダー: ${state.folder}`;
+      folderLabel.textContent = `VPSフォルダー: ${state.folder}`;
       body.appendChild(folderLabel);
 
       if (!images.length) {
@@ -11740,7 +11750,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
 
     async function importServerGeneratedImage(character, imageName) {
       try {
-        setGeneratedImageStatus(`${imageName} を固定フォルダーから読み込んでいます。`);
+        setGeneratedImageStatus(`${imageName} をVPSフォルダーから読み込んでいます。`);
         const response = await fetch(importDirectoryEndpoint("/import-image-data", { character, name: imageName }), { method: "GET" });
         const json = await response.json().catch(() => ({}));
         if (!response.ok || !json.ok) throw new Error(json.error || `HTTP ${response.status}`);
@@ -11748,24 +11758,35 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         importGeneratedImageDataUrl(json.dataUrl, json.filename || imageName, "fixed-folder-import");
       } catch (error) {
         console.error(error);
-        setGeneratedImageStatus(`固定フォルダー画像の読み込みに失敗しました: ${error.message}`, "err");
+        setGeneratedImageStatus(`VPSフォルダー画像の読み込みに失敗しました: ${error.message}`, "err");
       }
     }
 
     async function importGeneratedImage(event = null) {
       const character = activeCharacter();
-      const forceDirectoryPick = !!(event && event.shiftKey) || !shouldUseFixedImportDirectory();
+      const fixedImport = shouldUseFixedImportDirectory();
+      const hostedFixedImport = isHostedToolPage() && fixedImport;
+      const forceDeviceFolderPick = !!(event && event.shiftKey) || !fixedImport;
 
-      if (forceDirectoryPick) {
+      if (forceDeviceFolderPick) {
         await setServerImportDirectory();
         return;
       }
 
       try {
-        await refreshServerImportDirectoryState(character, false);
+        const state = await refreshServerImportDirectoryState(character, false);
         if (openServerImportImageGallery(character)) return;
+        if (hostedFixedImport) {
+          setGeneratedImageStatus(`${character}用のVPS画像フォルダーが見つかりませんでした。VPS保管庫に画像を追加してから、もう一度「VPS画像を取り込む」を押してください。`, "err");
+          return;
+        }
+        if (!state) console.warn("VPSのObsidian画像フォルダー情報が空でした。");
       } catch (error) {
         console.warn("VPSのObsidian画像フォルダーを開けませんでした。", error);
+        if (hostedFixedImport) {
+          setGeneratedImageStatus(`VPSのObsidian画像フォルダーを開けませんでした: ${error.message}`, "err");
+          return;
+        }
       }
 
       try {
@@ -11773,8 +11794,8 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         if (opened) return;
       } catch (error) {
         if (error && error.name === "AbortError") return;
-        console.warn("固定フォルダーからの取り込みに失敗しました。通常の画像選択に切り替えます。", error);
-        setGeneratedImageStatus(`固定フォルダーから開けなかったため通常選択に切り替えます: ${error.message}`, "err");
+        console.warn("端末フォルダーからの取り込みに失敗しました。通常の画像選択に切り替えます。", error);
+        setGeneratedImageStatus(`端末フォルダーから開けなかったため通常選択に切り替えます: ${error.message}`, "err");
       }
 
       if (window.showOpenFilePicker) {
@@ -11793,7 +11814,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
           console.error(error);
           if (directoryHandle) {
             forgetImportDirectoryHandle(character);
-            setGeneratedImageStatus(`固定フォルダーから開けなかったため、${character}用のフォルダー固定を解除しました。もう一度「外部生成画像を取り込む」を押すと通常の画像選択で開きます。`, "err");
+            setGeneratedImageStatus(`端末フォルダーから開けなかったため、${character}用の端末フォルダー固定を解除しました。チェックを外した状態で「VPS画像を取り込む」を押すと通常の画像選択で開きます。`, "err");
             return;
           }
           setGeneratedImageStatus(`フォルダー記憶つきのファイル選択に失敗しました。通常の選択に切り替えます: ${error.message}`, "err");
@@ -11830,8 +11851,8 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         : source === "drag-drop"
           ? "ドラッグ画像"
           : source === "fixed-folder-import"
-            ? "固定フォルダー画像"
-            : "外部生成画像";
+            ? "VPSフォルダー画像"
+            : "端末画像";
       lastGeneratedImage = {
         id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
         createdAt: new Date().toISOString(),
@@ -11870,8 +11891,8 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
           : source === "drag-drop"
             ? "ドラッグ画像"
             : source === "fixed-folder-import"
-              ? "固定フォルダー画像"
-              : "外部生成画像";
+              ? "VPSフォルダー画像"
+              : "端末画像";
         lastGeneratedImage = {
           id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
           createdAt: new Date().toISOString(),
@@ -12518,11 +12539,12 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     $("appendSlugNumberToImageDownloadName").addEventListener("change", () => saveImageDownloadNameConfig(activeCharacter()));
     $("appendIdeaTitleToImageDownloadName").addEventListener("change", () => saveImageDownloadNameConfig(activeCharacter()));
     if ($("setImportDirectory")) $("setImportDirectory").addEventListener("click", setServerImportDirectory);
+    if ($("openVaultBrowser")) $("openVaultBrowser").addEventListener("click", openVaultBrowser);
     $("useFixedImportDirectory").addEventListener("change", () => {
       if ($("useFixedImportDirectory").checked) {
-        setGeneratedImageStatus("固定フォルダーを使う設定にしました。未設定の場合は次回取り込み時にフォルダーを選びます。");
+        setGeneratedImageStatus("VPS画像を使う設定にしました。「VPS画像を取り込む」でVPSのObsidian Folderを開きます。");
       } else {
-        setGeneratedImageStatus("次に「外部生成画像を取り込む」を押すと、取り込みフォルダーを変更します。");
+        setGeneratedImageStatus("端末画像を選ぶ設定にしました。次に「VPS画像を取り込む」を押すと、スマホ/PC本体の画像フォルダーを開きます。");
       }
     });
     $("importGeneratedImage").addEventListener("click", (event) => importGeneratedImage(event));
