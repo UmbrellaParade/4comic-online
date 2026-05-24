@@ -1049,6 +1049,10 @@ function isGitHubActionsSchedulerMode() {
   if (process.env.RAILWAY_ENVIRONMENT !== undefined || process.env.RAILWAY_PROJECT_ID !== undefined) {
     return false;
   }
+  // GitHub Actionsランナー上でのみtrue（VPSに.github/workflowsがあっても除外）
+  if (process.env.GITHUB_ACTIONS !== "true") {
+    return false;
+  }
   return fs.existsSync(GITHUB_WORKFLOWS_DIR);
 }
 
