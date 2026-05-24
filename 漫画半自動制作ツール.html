@@ -5465,14 +5465,19 @@
       const main = val("character");
       const stored = readSubCharacterSelection(main);
       const selected = new Set(stored);
-      const onChange = () => {
-        saveSubCharacterSelection(main);
+      const onChange = (event) => {
+        const name = event.target.value;
+        const checked = event.target.checked;
+        const current = readSubCharacterSelection(main);
+        const newList = checked
+          ? [...new Set([...current, name])]
+          : current.filter((n) => n !== name);
+        saveSubCharacterSelection(main, newList);
         updateSubCharChecks();
         render();
       };
       renderSubCharContainer($("subCharChecks"), selected, main, onChange);
       renderSubCharContainer($("subCharChecksIdea"), selected, main, onChange);
-      saveSubCharacterSelection(main, selectedSubCharacterNames());
     }
 
     function updatePreview() {
