@@ -12442,6 +12442,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       lastGeneratedImage = image;
       showGeneratedImage(image);
       await reserveGeneratedImage();
+      renderReservations();
     }
 
     async function reserveGeneratedImage() {
@@ -12472,7 +12473,9 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       }
 
       const existingReservation = image.id
-        ? readList(RESERVATION_KEY).map(compactReservationItem).find((item) => item.imageId === image.id && reservationStatus(item) !== "done")
+        ? readList(RESERVATION_KEY).map(compactReservationItem).find(
+            (item) => item.imageId === image.id && reservationStatus(item) !== "done" && sameActiveCharacter(item)
+          )
         : null;
       if (existingReservation) {
         updateReservationById(existingReservation.id, { imageFilename: image.filename });
