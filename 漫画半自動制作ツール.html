@@ -1920,9 +1920,10 @@
               <div class="actions">
                 <button id="loadKeptImage" class="secondary" type="button">キープ画像を表示</button>
                 <button id="reserveKeptImage" class="secondary" type="button">このキープ画像で予約リスト追加</button>
+                <button id="linkKeptImageToReservation" class="secondary" type="button">選択中の予約に画像を紐づける</button>
                 <button id="deleteKeptImage" class="warn" type="button">キープ画像を削除</button>
               </div>
-              <p class="hint">キープ済み画像は、予約投稿前に入れる画像の候補として使えます。</p>
+              <p class="hint">キープ済み画像は、予約投稿前に入れる画像の候補として使えます。「選択中の予約に画像を紐づける」は、すでにある予約に後から画像をセットしたい時に使います。</p>
             </div>
           </div>
         </details>
@@ -12428,6 +12429,34 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       setGeneratedImageStatus("キープ画像を削除しました。");
     }
 
+    async function linkKeptImageToSelectedReservation() {
+      const imageId = $("keptImageList") ? $("keptImageList").value : "";
+      if (!imageId) {
+        alert("紐づけるキープ画像をリストから選んでください。");
+        return;
+      }
+      const reservationId = selectedReservationId();
+      if (!reservationId) {
+        alert("画像を紐づける予約を予約投稿前リストから選んでください。");
+        return;
+      }
+      const image = await getGeneratedImage(imageId).catch(() => null);
+      if (!image) {
+        setGeneratedImageStatus("選択したキープ画像を読み込めませんでした。", "err");
+        return;
+      }
+      updateReservationById(reservationId, {
+        imageId: image.id,
+        imageFilename: image.filename,
+        imageModel: image.model || "",
+        imageCreatedAt: image.createdAt || "",
+        imageKeptAt: image.keptAt || new Date().toISOString(),
+        imageSaveStatus: "kept"
+      });
+      setGeneratedImageStatus(`「${image.filename || "キープ画像"}」を選択中の予約に紐づけました。`);
+      setStatus("選択中の予約に画像を紐づけました。");
+    }
+
     async function reserveSelectedKeptImage() {
       const id = $("keptImageList") ? $("keptImageList").value : "";
       if (!id) {
@@ -13025,6 +13054,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     $("reserveGeneratedImage").addEventListener("click", reserveGeneratedImage);
     $("loadKeptImage").addEventListener("click", loadKeptImage);
     $("reserveKeptImage").addEventListener("click", reserveSelectedKeptImage);
+    $("linkKeptImageToReservation").addEventListener("click", linkKeptImageToSelectedReservation);
     $("deleteKeptImage").addEventListener("click", deleteKeptImage);
     $("imageModel").addEventListener("change", updateImageModelVisibility);
 
