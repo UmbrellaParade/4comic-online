@@ -1435,6 +1435,25 @@ function validateToken(raw) {
   return token;
 }
 
+function normalizeXUsername(raw) {
+  return String(raw || "").trim().replace(/^@+/, "").toLowerCase();
+}
+
+async function xUserForToken(token) {
+  const json = await xApiJson("https://api.x.com/2/users/me", token, null, "GET");
+  return json.data || null;
+}
+
+function assertExpectedXUsername(character, expectedUsername, user) {
+  const expected = normalizeXUsername(expectedUsername);
+  if (!expected) return;
+  const actual = normalizeXUsername(user && user.username);
+  if (!actual || actual !== expected) {
+    const label = character || "selected character";
+    throw new Error(`${label} expected @${expected}, but X authorized @${actual || "unknown"}. Switch the X account and try OAuth again.`);
+  }
+}
+
 function friendlyXErrorMessage(message) {
   const text = String(message || "");
   const isAppOnlyError = /Application-Only is forbidden/i.test(text)
@@ -1509,6 +1528,7 @@ function oauthResultWithoutToken(result) {
       scope: result.token.scope || "",
       token_type: result.token.token_type || "bearer"
     },
+    user: result.user || null,
     obtainedAt: result.obtainedAt
   };
 }
@@ -1540,6 +1560,7 @@ function storedOAuthResult(character) {
     token,
     clientId: record.clientId || "",
     clientSecret: record.clientSecret || "",
+    user: record.user || null,
     obtainedAt: record.obtainedAt || "",
     expiresAt: record.expiresAt || token.expires_at || ""
   };
@@ -1568,6 +1589,7 @@ function persistOAuthResult(result) {
     },
     clientId: result.clientId || previous.clientId || "",
     clientSecret: result.clientSecret || previous.clientSecret || "",
+    user: result.user || previous.user || null,
     expiresAt,
     obtainedAt: result.obtainedAt || previous.obtainedAt || new Date().toISOString(),
     savedAt: new Date().toISOString()
@@ -2038,6 +2060,7 @@ async function handleOAuthStart(req, res) {
     redirectUri,
     scopes,
     character: String(payload.character || ""),
+    expectedUsername: String(payload.expectedUsername || ""),
     codeVerifier,
     createdAt: Date.now()
   });
@@ -2082,11 +2105,14 @@ async function handleOAuthCallback(req, res) {
       redirect_uri: session.redirectUri,
       code_verifier: session.codeVerifier
     }, session.clientId, session.clientSecret);
+    const user = await xUserForToken(token.access_token);
+    assertExpectedXUsername(session.character, session.expectedUsername, user);
     const updated = rememberOAuthResult(state, {
       ok: true,
       ready: true,
       character: session.character,
       token,
+      user,
       clientId: session.clientId,
       clientSecret: session.clientSecret,
       obtainedAt: new Date().toISOString()
@@ -2117,18 +2143,20 @@ async function handleOAuthRefresh(req, res) {
     refresh_token: refreshToken,
     grant_type: "refresh_token"
   }, clientId, clientSecret);
+  const user = await xUserForToken(token.access_token);
   const updated = rememberOAuthResult("", {
     ok: true,
     ready: true,
     character,
     token,
+    user,
     clientId,
     clientSecret,
     obtainedAt: new Date().toISOString()
   });
   const gitPush = updated ? await syncScheduleQueueToGitHub("oauth refresh token sync") : { ok: true, skipped: true, reason: "no_pending_schedule_token_updates" };
   log("OAUTH_TOKEN_REFRESHED", { hasRefreshToken: !!token.refresh_token });
-  sendJson(res, 200, { ok: true, token, gitPush });
+  sendJson(res, 200, { ok: true, token, user, gitPush });
 }
 
 async function handleOAuthStore(req, res) {
@@ -2307,6 +2335,7 @@ function clientStateAllowedKey(key) {
     || /^umbrellaMangaSubCharacterSelection_/.test(value)
     || /^umbrellaMangaSnsTextSettings_/.test(value)
     || /^umbrellaMangaCustomCharacterPrompt_/.test(value)
+    || /^umbrellaMangaXExpectedUsernameByCharacter_/.test(value)
     || /^umbrellaMangaScheduled(Date|Time)ByCharacter$/.test(value)
     || /^umbrellaManga(ImageDownloadName|ImageDownloadFolder)ByCharacter$/.test(value)
     || /^umbrellaManga(IdeaStock|Reservations|SeedIdeaStockImportedIds|ActiveIdeaId|ActiveCharacter|CurrentAiProvider|LastScheduledTime)$/.test(value)

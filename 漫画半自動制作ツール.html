@@ -2005,6 +2005,19 @@
             <div class="collapsible-content">
             <p class="hint">X Developer Portalで投稿するアカウント本人として認可したOAuth 2.0 User Contextのaccess_tokenを保存すると、予約投稿前リストから画像つきでXへ投稿できます。App-only Bearer Tokenでは投稿できません。</p>
             <div class="grid cols">
+              <label>X認証するキャラクター
+                <select id="xOAuthCharacter">
+                  <option>ヴェル13世</option>
+                  <option>カーラ・マンソン</option>
+                  <option>べるぼ</option>
+                </select>
+              </label>
+              <label>Xユーザー名確認（任意）
+                <input id="xExpectedUsername" type="text" placeholder="例: @velxiii13">
+              </label>
+            </div>
+            <p class="hint">スマホで別アカウントに吸われる時は、ここが投稿したいキャラになっているか確認してください。ユーザー名確認を入れておくと、違うXアカウントで認可された時に保存を止めます。</p>
+            <div class="grid cols">
               <label>X User Access Token
                 <input id="xAccessToken" type="password" placeholder="OAuth2 User Context access_tokenのみ。App-only不可">
               </label>
@@ -5038,6 +5051,7 @@
         || /^umbrellaMangaSubCharacterSelection_/.test(value)
         || /^umbrellaMangaSnsTextSettings_/.test(value)
         || /^umbrellaMangaCustomCharacterPrompt_/.test(value)
+        || /^umbrellaMangaXExpectedUsernameByCharacter_/.test(value)
         || /^umbrellaMangaScheduled(Date|Time)ByCharacter$/.test(value)
         || /^umbrellaManga(ImageDownloadName|ImageDownloadFolder)ByCharacter$/.test(value)
         || /^umbrellaManga(IdeaStock|Reservations|SeedIdeaStockImportedIds|ActiveIdeaId|ActiveCharacter|CurrentAiProvider|LastScheduledTime)$/.test(value)
@@ -6616,6 +6630,7 @@ ${text}`;
     const X_OAUTH_CLIENT_SECRET_KEY = "umbrellaMangaXOAuthClientSecret";
     const X_OAUTH_CLIENT_ID_KEY_PREFIX = "umbrellaMangaXOAuthClientIdByCharacter";
     const X_OAUTH_CLIENT_SECRET_KEY_PREFIX = "umbrellaMangaXOAuthClientSecretByCharacter";
+    const X_EXPECTED_USERNAME_KEY_PREFIX = "umbrellaMangaXExpectedUsernameByCharacter";
     const X_OAUTH_STATE_KEY = "umbrellaMangaXOAuthState";
     const X_OAUTH_STATE_CHARACTER_KEY = "umbrellaMangaXOAuthStateCharacter";
     const X_OAUTH_SCOPES = "tweet.read tweet.write users.read media.write offline.access";
@@ -6693,7 +6708,8 @@ ${text}`;
           selectedImagePatternKey(character),
           subCharacterSelectionKey(character),
           snsTextSettingsKey(character),
-          customCharacterPromptKey(character)
+          customCharacterPromptKey(character),
+          xExpectedUsernameKey(character)
         ])
       ].filter((key) => key && serverStateAllowedKey(key));
     }
@@ -8909,16 +8925,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       }
     }
 
-    async function checkXToken(character = xOAuthOperationCharacter()) {
-      const targetCharacter = xTokenCharacter(character);
-      let token = "";
-      try {
-        token = await getUsableXAccessTokenForCharacter(targetCharacter, true);
-      } catch (error) {
-        setXPostStatus(`${targetCharacter}用のX User Access Token確認エラー: ${error.message}`, "err");
-        return;
-      }
-      try {
+    async function fetchXTokenUser(token) {
         const response = await fetch(`${scheduleServerUrl()}/check-token`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -8928,9 +8935,26 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         if (!response.ok || !json.ok) {
           throw new Error(json.error || stringifyXDetail(json.detail) || `HTTP ${response.status}`);
         }
-        setXPostStatus(`${targetCharacter}用トークン確認OK: @${json.user?.username || "unknown"}`);
+        return json.user || null;
+    }
+
+    async function checkXToken(character = xOAuthOperationCharacter(), tokenOverride = "") {
+      const targetCharacter = xTokenCharacter(character);
+      let token = "";
+      try {
+        token = tokenOverride ? validateXAccessToken(tokenOverride) : await getUsableXAccessTokenForCharacter(targetCharacter, true);
+      } catch (error) {
+        setXPostStatus(`${targetCharacter}用のX User Access Token確認エラー: ${error.message}`, "err");
+        return null;
+      }
+      try {
+        const user = await fetchXTokenUser(token);
+        assertXUserMatchesExpected(targetCharacter, user);
+        setXPostStatus(`${targetCharacter}用トークン確認OK: @${user?.username || "unknown"}`);
+        return user;
       } catch (error) {
         setXPostStatus(`Xトークン確認エラー: ${error.message}`, "err");
+        return null;
       }
     }
 
@@ -8969,6 +8993,55 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       return `${X_OAUTH_CLIENT_SECRET_KEY_PREFIX}_${xTokenCharacter(character)}`;
     }
 
+    function normalizeXUsername(raw) {
+      return String(raw || "").trim().replace(/^@+/, "").toLowerCase();
+    }
+
+    function xExpectedUsernameKey(character = val("character")) {
+      return `${X_EXPECTED_USERNAME_KEY_PREFIX}_${xTokenCharacter(character)}`;
+    }
+
+    function getXExpectedUsernameForCharacter(character = val("character")) {
+      return normalizeXUsername(localStorage.getItem(xExpectedUsernameKey(character)) || "");
+    }
+
+    function loadXExpectedUsername(character = val("character")) {
+      if (!$("xExpectedUsername")) return;
+      const username = getXExpectedUsernameForCharacter(character);
+      $("xExpectedUsername").value = username ? `@${username}` : "";
+    }
+
+    function saveXExpectedUsername(showMessage = false, character = xOAuthOperationCharacter()) {
+      if (!$("xExpectedUsername")) return "";
+      const targetCharacter = xTokenCharacter(character);
+      const username = normalizeXUsername($("xExpectedUsername").value);
+      if (username) localStorage.setItem(xExpectedUsernameKey(targetCharacter), username);
+      else localStorage.removeItem(xExpectedUsernameKey(targetCharacter));
+      syncServerClientState(xExpectedUsernameKey(targetCharacter), username || "");
+      if (showMessage) {
+        setXPostStatus(username
+          ? `${targetCharacter}用のXユーザー名確認を保存しました: @${username}`
+          : `${targetCharacter}用のXユーザー名確認を空にしました。`);
+      }
+      return username;
+    }
+
+    function assertXUserMatchesExpected(character, user) {
+      const targetCharacter = xTokenCharacter(character);
+      const expected = getXExpectedUsernameForCharacter(targetCharacter);
+      if (!expected) return;
+      const actual = normalizeXUsername(user && user.username);
+      if (!actual) throw new Error(`${targetCharacter}用のXユーザー確認ができませんでした。`);
+      if (actual !== expected) {
+        throw new Error(`${targetCharacter}用に @${expected} を期待していますが、X側では @${actual} として認可されています。スマホのXで正しいアカウントに切り替えてから、もう一度「Xログインしてトークン取得」を押してください。`);
+      }
+    }
+
+    function updateXOAuthCharacterControl(character = xOAuthOperationCharacter()) {
+      const targetCharacter = xTokenCharacter(character);
+      if ($("xOAuthCharacter")) $("xOAuthCharacter").value = targetCharacter;
+    }
+
     function migrateLegacyXOAuthSettings(character = val("character")) {
       const targetCharacter = xTokenCharacter(character);
       const legacyClientId = localStorage.getItem(X_OAUTH_CLIENT_ID_KEY) || "";
@@ -8999,6 +9072,8 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       migrateLegacyXOAuthSettings(targetCharacter);
       const settings = getXOAuthSettingsForCharacter(targetCharacter);
       activeXOAuthSettingsCharacter = targetCharacter;
+      updateXOAuthCharacterControl(targetCharacter);
+      loadXExpectedUsername(targetCharacter);
       if ($("xOAuthClientId")) $("xOAuthClientId").value = settings.clientId;
       if ($("xOAuthClientSecret")) $("xOAuthClientSecret").value = settings.clientSecret;
       updateXOAuthRedirectUri();
@@ -9040,6 +9115,8 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       localStorage.removeItem(X_OAUTH_CLIENT_SECRET_KEY);
       updateXOAuthRedirectUri();
       activeXOAuthSettingsCharacter = targetCharacter;
+      updateXOAuthCharacterControl(targetCharacter);
+      saveXExpectedUsername(false, targetCharacter);
       if (showMessage) setXPostStatus(`${targetCharacter}用のX OAuth設定を保存しました。`);
       return { character: targetCharacter, clientId, clientSecret, redirectUri: xOAuthRedirectUri() };
     }
@@ -9132,6 +9209,10 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
           updateXOAuthSavedStatus(targetCharacter);
           return false;
         }
+        if (getXExpectedUsernameForCharacter(targetCharacter)) {
+          const user = json.user || await fetchXTokenUser(json.token.access_token);
+          assertXUserMatchesExpected(targetCharacter, user);
+        }
         saveOAuthTokenBundle(json.character || targetCharacter, json.token, { quiet: true, sync: false });
         if (xTokenCharacter() === targetCharacter) {
           if ($("xAccessToken")) $("xAccessToken").value = getXAccessTokenForCharacter(targetCharacter);
@@ -9196,6 +9277,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       clearXOAuthState();
       let popup = null;
       try {
+        if (activeXOAuthSettingsCharacter !== targetCharacter) loadXOAuthSettings(targetCharacter);
         const { clientId, clientSecret, redirectUri } = saveXOAuthSettings(false, targetCharacter);
         if (!clientId) {
           setXPostStatus("X OAuth Client IDを入力して、OAuth設定保存を押してください。", "err");
@@ -9224,7 +9306,8 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
             clientId,
             clientSecret,
             redirectUri,
-            scopes: X_OAUTH_SCOPES
+            scopes: X_OAUTH_SCOPES,
+            expectedUsername: getXExpectedUsernameForCharacter(targetCharacter)
           })
         });
         const json = await response.json().catch(() => ({}));
@@ -9278,9 +9361,12 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
           clearXOAuthState();
           throw new Error(`${targetCharacter}用ではなく、${json.character}用のOAuth結果が返りました。${targetCharacter}を選び直して再取得してください。`);
         }
+        const oauthAccessToken = validateXAccessToken(json.token && json.token.access_token);
+        const user = json.user || await fetchXTokenUser(oauthAccessToken);
+        assertXUserMatchesExpected(targetCharacter, user);
         saveOAuthTokenBundle(targetCharacter, json.token);
         clearXOAuthState();
-        await checkXToken(targetCharacter);
+        setXPostStatus(`${targetCharacter}用のX OAuthを取得しました: @${user?.username || "unknown"}`);
         return true;
       } catch (error) {
         setXOAuthStatus("取得エラー");
@@ -9322,6 +9408,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       });
       const json = await response.json().catch(() => ({}));
       if (!response.ok || !json.ok) throw new Error(json.error || stringifyXDetail(json.detail) || `HTTP ${response.status}`);
+      if (json.user) assertXUserMatchesExpected(targetCharacter, json.user);
       saveOAuthTokenBundle(targetCharacter, json.token);
       if (showMessage) setXPostStatus(`${targetCharacter}用のXトークンを更新しました。`);
       return getXAccessTokenForCharacter(targetCharacter);
@@ -9333,10 +9420,17 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         await restoreXOAuthTokenFromServer(targetCharacter);
       }
       const expiresAt = getXTokenExpiresAt(targetCharacter);
+      let token = "";
       if (allowRefresh && getXRefreshTokenForCharacter(targetCharacter) && (!expiresAt || shouldRefreshXToken(targetCharacter))) {
-        return await refreshXAccessToken(targetCharacter, false);
+        token = await refreshXAccessToken(targetCharacter, false);
+      } else {
+        token = validateXAccessToken(getXAccessTokenForCharacter(targetCharacter));
       }
-      return validateXAccessToken(getXAccessTokenForCharacter(targetCharacter));
+      if (getXExpectedUsernameForCharacter(targetCharacter)) {
+        const user = await fetchXTokenUser(token);
+        assertXUserMatchesExpected(targetCharacter, user);
+      }
+      return token;
     }
 
     function normalizeXAccessToken(raw) {
@@ -9360,8 +9454,12 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     }
 
     function xOAuthOperationCharacter() {
-      const item = selectedReservation();
-      return xTokenCharacter((item && item.character) || activeScheduleCharacter || val("character"));
+      return xTokenCharacter(
+        ($("xOAuthCharacter") && $("xOAuthCharacter").value)
+        || activeXOAuthSettingsCharacter
+        || activeScheduleCharacter
+        || activeCharacter()
+      );
     }
 
     function xAccessTokenKey(character = val("character")) {
@@ -13095,6 +13193,16 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     $("saveXAccessToken").addEventListener("click", saveXAccessToken);
     $("clearXAccessToken").addEventListener("click", clearXAccessToken);
     $("saveXOAuthConfig").addEventListener("click", () => saveXOAuthSettings(true));
+    $("xOAuthCharacter").addEventListener("change", () => {
+      loadXOAuthSettings(val("xOAuthCharacter") || activeCharacter());
+      loadXAccessToken(xOAuthOperationCharacter());
+      restoreXOAuthTokenFromServer(xOAuthOperationCharacter(), { showMessage: false }).catch((error) => {
+        console.warn("X OAuth復元に失敗しました。", error);
+      });
+      setXPostStatus(`${xOAuthOperationCharacter()}用のX設定に切り替えました。`);
+    });
+    $("xExpectedUsername").addEventListener("input", () => saveXExpectedUsername(false));
+    $("xExpectedUsername").addEventListener("change", () => saveXExpectedUsername(true));
     ["xOAuthClientId", "xOAuthClientSecret"].forEach((id) => {
       const input = $(id);
       if (!input) return;
