@@ -2306,6 +2306,7 @@ function clientStateAllowedKey(key) {
   return /^umbrellaManga(ImageSet|ImagePatterns|SelectedImagePattern)_/.test(value)
     || /^umbrellaMangaSubCharacterSelection_/.test(value)
     || /^umbrellaMangaSnsTextSettings_/.test(value)
+    || /^umbrellaMangaCustomCharacterPrompt_/.test(value)
     || /^umbrellaMangaScheduled(Date|Time)ByCharacter$/.test(value)
     || /^umbrellaManga(ImageDownloadName|ImageDownloadFolder)ByCharacter$/.test(value)
     || /^umbrellaManga(IdeaStock|Reservations|SeedIdeaStockImportedIds|ActiveIdeaId|ActiveCharacter|CurrentAiProvider|LastScheduledTime)$/.test(value)

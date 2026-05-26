@@ -1473,6 +1473,8 @@
           <div class="collapsible-content">
             <div class="actions">
               <button id="applyPreset" class="secondary" type="button">プリセット適用</button>
+              <button id="saveCustomCharacterPrompt" class="secondary" type="button">手動プロンプト保存</button>
+              <button id="clearCustomCharacterPrompt" class="secondary" type="button">手動プロンプト削除</button>
               <button id="copyRefPathTop" class="secondary" type="button">画像パスコピー</button>
             </div>
           <div class="preset-grid">
@@ -1480,6 +1482,10 @@
               <textarea id="profileText" class="preset-text" readonly></textarea>
             </label>
           </div>
+          <label>手動キャラクタープロンプト（任意）
+            <textarea id="customCharacterPrompt" rows="5" placeholder="配布用・新キャラ用に、見た目、性格、口調、漫画で絶対に守ることを自由に書けます。ここに書いた内容はネタ生成と画像生成プロンプトへ優先反映されます。"></textarea>
+          </label>
+          <p class="hint" id="customCharacterPromptStatus">手動プロンプト未設定</p>
           <!-- キャラ参考画像（ギャラリー選択） -->
           <div class="manga-ref-section">
             <div class="manga-ref-head">
@@ -1801,6 +1807,7 @@
                 <button id="mangaGenBtn" class="generate-ai-btn" type="button" style="background:#6c5ce7">プロンプトコピー</button>
                 <button id="generateMangaImageBtn" class="secondary" type="button">API生成（認証済み向け）</button>
                 <button id="importGeneratedImage" class="secondary" type="button">VPS画像を取り込む</button>
+                <button id="importExternalGeneratedImage" class="secondary" type="button">外部画像を取り込む</button>
               </div>
           </div>
           <details class="subchar-section collapsible-box" id="imageGenerationSettingsPanel" open>
@@ -1854,7 +1861,7 @@
               <div class="check-row">
                 <label><input id="useFixedImportDirectory" type="checkbox" checked> VPS画像は固定フォルダーから選ぶ</label>
               </div>
-              <p class="hint">チェックあり：VPSのObsidian Folderにある画像を開きます。チェックなし：スマホ/PC本体のフォルダーや画像を選びます。</p>
+              <p class="hint">VPS画像はVPSのObsidian Folderから選びます。スマホ/PC本体やCanva・ChatGPTなどで作った画像は「外部画像を取り込む」から選べます。</p>
               <div class="actions">
                 <button id="openVaultBrowser" class="secondary" type="button">VPS保管庫を開く</button>
               </div>
@@ -1932,10 +1939,11 @@
           <div class="workflow-head">
             <div class="workflow-title">SNS予約投稿</div>
           </div>
+          <p class="hint">まずは「投稿先・予定日・投稿文」を決めればOKです。X自動投稿はX設定、WordPress投稿はWordPress設定を使います。Instagram/TikTok/Threadsなどは投稿文コピー・管理用として使えます。</p>
           <details class="subchar-section collapsible-box" id="reservationTextPanel">
-            <summary class="subchar-title collapsible-summary">投稿文・ハッシュタグ（必要な時だけ） <span class="collapse-hint">クリックで開閉</span></summary>
+            <summary class="subchar-title collapsible-summary">投稿文・ハッシュタグ（かんたん設定） <span class="collapse-hint">クリックで開閉</span></summary>
             <div class="collapsible-content">
-              <p class="hint">手動投稿文が空欄なら本文は空欄です。ハッシュタグは固定タグとネタ用追加タグを分けて管理します。</p>
+              <p class="hint">本文を入れたい時だけチェックを入れます。ハッシュタグは「固定のみ」「ネタ用のみ」「ミックス」を選べます。ミックス時は重複タグを自動で省きます。</p>
               <label>投稿文（手動）
                 <textarea id="manualPostText" rows="3" placeholder="基本は空欄でOK。書いた時だけ本文として投稿に入ります。"></textarea>
               </label>
@@ -1962,6 +1970,9 @@
                   </select>
                 </label>
               </div>
+              <div class="actions">
+                <button id="copyPlatformPostText" class="secondary" type="button">選択中SNS用の投稿文コピー</button>
+              </div>
             </div>
           </details>
           <div class="subchar-section" id="reservationScheduleSettingsPanel">
@@ -1976,11 +1987,16 @@
             </div>
             <label>投稿先
               <select id="platform">
-                <option>Instagram / X / TikTok</option>
+                <option>X / Instagram / TikTok</option>
+                <option>X / Instagram / TikTok / Threads</option>
+                <option>全SNS（X / Instagram / TikTok / Threads / YouTube Shorts / Facebook）</option>
                 <option>Instagram</option>
                 <option>X</option>
                 <option>TikTok</option>
                 <option>Instagram / X</option>
+                <option>Threads</option>
+                <option>YouTube Shorts</option>
+                <option>Facebook</option>
               </select>
             </label>
           </div>
@@ -4971,7 +4987,9 @@
       const character = val("character") || "ヴェル13世";
       const info = characterData[character] || characterData["ヴェル13世"];
       const speechStyleText = info.speechStyle ? `\n\n口調・言葉づかい:\n${info.speechStyle}` : "";
-      $("profileText").value = `${info.profileSummary || ""}${speechStyleText}\n\n漫画テンプレ:\n${info.mangaTemplate || ""}`;
+      loadCustomCharacterPrompt(character);
+      const manualPromptText = customCharacterPromptBlock(character, val("customCharacterPrompt"));
+      $("profileText").value = `${info.profileSummary || ""}${speechStyleText}${manualPromptText}\n\n漫画テンプレ:\n${info.mangaTemplate || ""}`;
 
       // キャラ参考画像（全画像）
       const allImages = getCharacterImages(character);
@@ -5019,6 +5037,7 @@
       return /^umbrellaManga(ImageSet|ImagePatterns|SelectedImagePattern)_/.test(value)
         || /^umbrellaMangaSubCharacterSelection_/.test(value)
         || /^umbrellaMangaSnsTextSettings_/.test(value)
+        || /^umbrellaMangaCustomCharacterPrompt_/.test(value)
         || /^umbrellaMangaScheduled(Date|Time)ByCharacter$/.test(value)
         || /^umbrellaManga(ImageDownloadName|ImageDownloadFolder)ByCharacter$/.test(value)
         || /^umbrellaManga(IdeaStock|Reservations|SeedIdeaStockImportedIds|ActiveIdeaId|ActiveCharacter|CurrentAiProvider|LastScheduledTime)$/.test(value)
@@ -5692,6 +5711,56 @@
       }
     }
 
+    function customCharacterPromptKey(character = val("character") || "ヴェル13世") {
+      return `${CUSTOM_CHARACTER_PROMPT_KEY_PREFIX}_${character || "ヴェル13世"}`;
+    }
+
+    function customCharacterPromptFor(character = val("character") || "ヴェル13世") {
+      return localStorage.getItem(customCharacterPromptKey(character)) || "";
+    }
+
+    function updateCustomCharacterPromptStatus(character = val("character") || "ヴェル13世") {
+      if (!$("customCharacterPromptStatus")) return;
+      const hasPrompt = !!String($("customCharacterPrompt")?.value || "").trim();
+      $("customCharacterPromptStatus").textContent = hasPrompt
+        ? `${character}用の手動プロンプトを使用中`
+        : `${character}用の手動プロンプト未設定`;
+    }
+
+    function loadCustomCharacterPrompt(character = val("character") || "ヴェル13世") {
+      if (!$("customCharacterPrompt")) return;
+      $("customCharacterPrompt").value = customCharacterPromptFor(character);
+      updateCustomCharacterPromptStatus(character);
+    }
+
+    function saveCustomCharacterPrompt(showMessage = true, character = val("character") || "ヴェル13世") {
+      if (!$("customCharacterPrompt")) return;
+      const text = val("customCharacterPrompt").trim();
+      const key = customCharacterPromptKey(character);
+      if (text) localStorage.setItem(key, text);
+      else localStorage.removeItem(key);
+      syncServerClientState(key, text);
+      updateCustomCharacterPromptStatus(character);
+      if (showMessage) {
+        $("statusText").textContent = text
+          ? `${character}用の手動キャラクタープロンプトを保存しました。`
+          : `${character}用の手動キャラクタープロンプトを空にしました。`;
+        render();
+      }
+    }
+
+    function clearCustomCharacterPrompt(character = val("character") || "ヴェル13世") {
+      if (!$("customCharacterPrompt")) return;
+      $("customCharacterPrompt").value = "";
+      saveCustomCharacterPrompt(true, character);
+    }
+
+    function customCharacterPromptBlock(character = val("character") || "ヴェル13世", prompt = "") {
+      const text = String(prompt || customCharacterPromptFor(character) || "").trim();
+      if (!text) return "";
+      return `\n\n手動キャラクタープロンプト（最優先）:\n${text}`;
+    }
+
     function snsTextSettingsKey(character = val("character")) {
       return `umbrellaMangaSnsTextSettings_${character || "ヴェル13世"}`;
     }
@@ -5883,6 +5952,7 @@
         subtitle: val("subtitle"),
         theme: val("theme"),
         status: val("status"),
+        customCharacterPrompt: $("customCharacterPrompt") ? val("customCharacterPrompt") : customCharacterPromptFor(character),
         imagePatternName,
         aim: val("aim"),
         p1: val("p1"),
@@ -5966,6 +6036,7 @@ ${d.imagePatternName || "-"}
 ## Obsidianキャラプリセット
 
 ${d.info.profileSummary || "-"}
+${customCharacterPromptBlock(d.character, d.customCharacterPrompt)}
 
 ## 口調・言葉づかい
 
@@ -6288,6 +6359,7 @@ ${carlaColorBlock}`;
 
 Main character preset from Obsidian:
 ${d.info.profileSummary || ""}
+${customCharacterPromptBlock(d.character, d.customCharacterPrompt)}
 
 Speech style and wording:
 ${d.info.speechStyle || ""}
@@ -6428,6 +6500,18 @@ ${text}
 
 ### TikTok
 
+${text}
+
+### Threads
+
+${text}
+
+### YouTube Shorts
+
+${text}
+
+### Facebook
+
 ${text}`;
     }
 
@@ -6518,6 +6602,7 @@ ${text}`;
     const SCHEDULE_TIME_BY_CHARACTER_KEY = "umbrellaMangaScheduledTimeByCharacter";
     const IMAGE_DOWNLOAD_FOLDER_BY_CHARACTER_KEY = "umbrellaMangaImageDownloadFolderByCharacter";
     const IMAGE_DOWNLOAD_NAME_BY_CHARACTER_KEY = "umbrellaMangaImageDownloadNameByCharacter";
+    const CUSTOM_CHARACTER_PROMPT_KEY_PREFIX = "umbrellaMangaCustomCharacterPrompt";
     const COLLAPSE_STATE_KEY = "umbrellaMangaCollapseState";
     const COLLAPSE_LAYOUT_VERSION_KEY = "umbrellaMangaCollapseLayoutVersion";
     const COLLAPSE_LAYOUT_VERSION = "2026-05-08-sns-reservation-cleanup";
@@ -6607,7 +6692,8 @@ ${text}`;
           imagePatternKey(character),
           selectedImagePatternKey(character),
           subCharacterSelectionKey(character),
-          snsTextSettingsKey(character)
+          snsTextSettingsKey(character),
+          customCharacterPromptKey(character)
         ])
       ].filter((key) => key && serverStateAllowedKey(key));
     }
@@ -7739,7 +7825,7 @@ ${text}`;
       $("p2").value = item.p2 || "";
       $("p3").value = item.p3 || "";
       $("p4").value = item.p4 || "";
-      $("platform").value = item.platform || "Instagram / X / TikTok";
+      $("platform").value = item.platform || "X / Instagram / TikTok";
       $("scheduled").value = item.date || today();
       $("scheduledTime").value = item.time || savedScheduledTimeForCharacter(item.character || val("character")) || localStorage.getItem(LAST_TIME_KEY) || "20:00";
       if (!$("fixedHashtags") || !val("fixedHashtags")) applyFixedHashtagDefault(val("character") || "ヴェル13世", false);
@@ -9408,6 +9494,22 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       applyItem(item);
       const text = extractPlatformCaption(caption(data()), "X");
       return trimXText(text, 260);
+    }
+
+    async function copySelectedPlatformPostText() {
+      const item = selectedReservation();
+      if (item) {
+        persistSelectedReservationTextOverrides(item);
+        applyItem(selectedReservation() || item);
+      }
+      const text = platformPostText(data());
+      if (!text) {
+        setXPostStatus("コピーする投稿文が空です。投稿文またはハッシュタグの設定を確認してください。", "err");
+        return;
+      }
+      await copyText(text);
+      const platform = val("platform") || "選択中SNS";
+      setXPostStatus(`${platform}用の投稿文をコピーしました。`);
     }
 
     function removeHashtagsFromText(text) {
@@ -12267,6 +12369,24 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       $("generatedImageImportInput").click();
     }
 
+    async function importExternalGeneratedImage() {
+      setGeneratedImageStatus("スマホ/PC本体、または外部ツールで作った画像を選んでください。");
+      if (window.showOpenFilePicker) {
+        try {
+          const [handle] = await window.showOpenFilePicker(externalImagePickerOptions());
+          if (!handle) return;
+          const file = await handle.getFile();
+          importGeneratedImageFile(file, "external-import");
+          return;
+        } catch (error) {
+          if (error && error.name === "AbortError") return;
+          console.warn("外部画像のファイル選択に失敗しました。通常の画像選択に切り替えます。", error);
+          setGeneratedImageStatus(`外部画像の選択に失敗したため通常選択に切り替えます: ${error.message}`, "err");
+        }
+      }
+      $("generatedImageImportInput").click();
+    }
+
     async function autoReserveImportedImage() {
       if (!lastGeneratedImage) return null;
       const filename = lastGeneratedImage.filename || "取り込み画像";
@@ -12781,6 +12901,11 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     checks.forEach((id) => $(id).addEventListener("change", render));
     $("generate").addEventListener("click", render);
     $("applyPreset").addEventListener("click", applyPreset);
+    $("saveCustomCharacterPrompt").addEventListener("click", () => saveCustomCharacterPrompt(true));
+    $("clearCustomCharacterPrompt").addEventListener("click", () => clearCustomCharacterPrompt());
+    $("customCharacterPrompt").addEventListener("input", () => {
+      saveCustomCharacterPrompt(false);
+    });
     $("referenceImage").addEventListener("change", () => { updatePreview(); saveCharacterImageSet(false); render(); });
     ["copyRefPath", "copyRefPathTop"].forEach((id) => {
       const button = $(id);
@@ -12807,7 +12932,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       $("character").value = "ヴェル13世";
       setActiveCharacter("ヴェル13世");
       $("status").value = "ネタ";
-      $("platform").value = "Instagram / X / TikTok";
+      $("platform").value = "X / Instagram / TikTok";
       $("scheduled").value = today();
       $("scheduledTime").value = savedScheduledTimeForCharacter("ヴェル13世") || localStorage.getItem(LAST_TIME_KEY) || "20:00";
       saveScheduledTimeForCharacter("ヴェル13世", val("scheduledTime"));
@@ -12986,6 +13111,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       }
     });
     $("copyXPostText").addEventListener("click", copySelectedXPostText);
+    $("copyPlatformPostText").addEventListener("click", () => copySelectedPlatformPostText().catch((error) => setXPostStatus(`投稿文コピーエラー: ${error.message}`, "err")));
     $("saveXLocalServerUrl").addEventListener("click", saveXLocalServerUrl);
     $("saveXCloudServerUrl").addEventListener("click", saveXCloudServerUrl);
     $("checkXLocalServer").addEventListener("click", () => checkXLocalServerConnection(true));
@@ -13041,6 +13167,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       }
     });
     $("importGeneratedImage").addEventListener("click", (event) => importGeneratedImage(event));
+    $("importExternalGeneratedImage").addEventListener("click", importExternalGeneratedImage);
     $("generatedImageImportInput").addEventListener("change", handleGeneratedImageImport);
     document.addEventListener("paste", handleGeneratedImagePaste);
     $("generatedImageFrame").addEventListener("dragover", (event) => {
@@ -13233,6 +13360,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       const info = characterData[character] || characterData["ヴェル13世"];
       const duplicateBlock = duplicateAvoidanceBlock(character);
       const manualIdeaSeed = String(options.manualIdeaSeed || "").trim();
+      const manualCharacterPrompt = customCharacterPromptBlock(character, $("customCharacterPrompt") ? val("customCharacterPrompt") : "");
       const wantAutoPostText = $("createAutoPostText") && $("createAutoPostText").checked;
       const wantIdeaHashtags = !$("createIdeaHashtags") || $("createIdeaHashtags").checked;
       const selectedSubCharacters = Array.from(document.querySelectorAll(".subchar-check:checked")).map((el) => el.value);
@@ -13252,10 +13380,10 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       const dialogueRules = selectedSubCharacters.length
         ? `- 登場キャラクターが選ばれているので、主人公と登場キャラクターが会話するシーンにする。
 - 少なくとも2コマ以上で、主人公と登場キャラクターのやり取りが分かるようにする。
-- ただし、1コマの中で2人を会話させない。1コマにつき話者は1人だけ、吹き出しも1つだけにする。
-- 2人に話させたい場合は、コマごとに話者を交互にする。
+- 1コマの中で2人が話す場合は、各キャラのセリフを短くし、誰のセリフかが明確に分かるようにする。
+- 吹き出しの左右ルールより、話しているキャラクター本人の近くに吹き出しを置くことを優先する。
+- 2人に話させたい場合は、同じコマ内で無理に長くしすぎず、必要ならコマごとに話者を交互にする。
 - セリフは「キャラ名: セリフ」または「キャラ名「セリフ」」の形にして、各コマの話者が画像生成側にも分かるようにする。
-- 1つのp1〜p4の中に2人分のセリフを書かない。
 - キャラ名は画像生成時の吹き出し配置用の話者ラベル。漫画内には基本的に表示しない前提で書く。
 `
         : "";
@@ -13271,6 +13399,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
 
 ## キャラクター: ${character}
 ${info.profileSummary}
+${manualCharacterPrompt}
 ${subCharacterPromptBlock}
 
 ## 口調・言葉づかい
