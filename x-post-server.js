@@ -2072,6 +2072,9 @@ async function handleOAuthStart(req, res) {
   authorizeUrl.searchParams.set("state", state);
   authorizeUrl.searchParams.set("code_challenge", codeChallenge);
   authorizeUrl.searchParams.set("code_challenge_method", "S256");
+  if (normalizeXUsername(payload.expectedUsername)) {
+    authorizeUrl.searchParams.set("force_login", "true");
+  }
   log("OAUTH_START", { character: payload.character || "", scopes, redirectUri });
   sendJson(res, 200, { ok: true, authorizeUrl: authorizeUrl.toString(), state, redirectUri, scopes });
 }
