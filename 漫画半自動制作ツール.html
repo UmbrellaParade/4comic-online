@@ -1648,7 +1648,14 @@
           <button id="reGenerate" class="secondary" type="button">↺ 再生成</button>
         </div>
         <div class="check-row">
-          <label><input id="createAutoPostText" type="checkbox"> ネタ用投稿文を作る</label>
+          <input id="createAutoPostText" type="checkbox" hidden>
+          <label>ネタ用投稿文
+            <select id="autoPostTextMode">
+              <option value="none">作らない</option>
+              <option value="short">作る（140文字以内）</option>
+              <option value="long">作る（文章長め・文字制限なし）</option>
+            </select>
+          </label>
           <label><input id="createIdeaHashtags" type="checkbox" checked> ネタ用ハッシュタグを作る</label>
         </div>
         <div class="grid cols" id="ideaTitleFields">
@@ -2250,7 +2257,7 @@
     const fields = [
       "character", "status", "title", "subtitle", "theme", "scheduled", "scheduledTime", "aim",
       "p1", "p2", "p3", "p4", "platform", "manualPostText", "autoPostText", "fixedHashtags", "ideaHashtags", "aiModel", "customModel", "calendarMonth",
-      "manualIdeaSeed", "hashtagPostMode",
+      "manualIdeaSeed", "hashtagPostMode", "autoPostTextMode",
       "pastIdeaTitle", "pastIdeaText",
       "imageModel", "customImageModel", "imageSize", "imageQuality", "imageFormat",
       "imageDownloadBaseName",
@@ -2259,7 +2266,7 @@
       "notes"
     ];
     const checks = ["aiLabel", "question", "logo", "chatGptReferenceInstruction", "autoStock", "autoObsidian", "avoidDuplicateIdeas", "createAutoPostText", "includeAutoPostText", "includeManualPostText", "createIdeaHashtags", "includeIdeaHashtags", "calendarAllCharacters", "useFixedImportDirectory", "appendSlugNumberToImageDownloadName", "appendIdeaTitleToImageDownloadName"];
-    const SNS_TEXT_FIELD_IDS = ["manualPostText", "autoPostText", "fixedHashtags", "ideaHashtags", "hashtagPostMode"];
+    const SNS_TEXT_FIELD_IDS = ["manualPostText", "autoPostText", "fixedHashtags", "ideaHashtags", "hashtagPostMode", "autoPostTextMode"];
     const SNS_TEXT_CHECK_IDS = ["createAutoPostText", "includeAutoPostText", "includeManualPostText", "createIdeaHashtags", "includeIdeaHashtags"];
     let activeTab = "card";
     let activeSnsSettingsCharacter = "";
@@ -5787,6 +5794,29 @@
       return "mixed";
     }
 
+    function normalizeAutoPostTextMode(mode, source = {}) {
+      const value = String(mode || "").trim();
+      if (["none", "short", "long"].includes(value)) return value;
+      return source.createAutoPostText ? "short" : "none";
+    }
+
+    function setAutoPostTextMode(mode, source = {}) {
+      const normalized = normalizeAutoPostTextMode(mode, source);
+      if ($("autoPostTextMode")) $("autoPostTextMode").value = normalized;
+      if ($("createAutoPostText")) $("createAutoPostText").checked = normalized !== "none";
+      return normalized;
+    }
+
+    function currentAutoPostTextMode() {
+      return normalizeAutoPostTextMode($("autoPostTextMode") ? val("autoPostTextMode") : "", {
+        createAutoPostText: $("createAutoPostText") ? $("createAutoPostText").checked : false
+      });
+    }
+
+    function syncAutoPostTextMode() {
+      return setAutoPostTextMode(currentAutoPostTextMode());
+    }
+
     function defaultSnsTextSettings(character = val("character")) {
       const info = characterData[character] || characterData["ヴェル13世"];
       return {
@@ -5795,6 +5825,7 @@
         fixedHashtags: info.tags || "",
         ideaHashtags: "",
         hashtagPostMode: "mixed",
+        autoPostTextMode: "none",
         createAutoPostText: false,
         includeAutoPostText: false,
         includeManualPostText: false,
@@ -5804,6 +5835,7 @@
     }
 
     function currentSnsTextSettings() {
+      syncAutoPostTextMode();
       const settings = {};
       SNS_TEXT_FIELD_IDS.forEach((id) => {
         if ($(id)) settings[id] = val(id);
@@ -5820,9 +5852,11 @@
         if ($(id)) $(id).value = merged[id] || "";
       });
       if ($("hashtagPostMode")) $("hashtagPostMode").value = normalizeHashtagPostMode(merged.hashtagPostMode, merged);
+      setAutoPostTextMode(merged.autoPostTextMode, merged);
       SNS_TEXT_CHECK_IDS.forEach((id) => {
         if ($(id)) $(id).checked = !!merged[id];
       });
+      setAutoPostTextMode(merged.autoPostTextMode, merged);
     }
 
     function saveSnsTextSettings(character = activeSnsSettingsCharacter || val("character") || "ヴェル13世") {
@@ -5981,6 +6015,7 @@
         fixedHashtags: val("fixedHashtags"),
         ideaHashtags: val("ideaHashtags"),
         hashtagPostMode: val("hashtagPostMode"),
+        autoPostTextMode: syncAutoPostTextMode(),
         createAutoPostText: $("createAutoPostText").checked,
         includeAutoPostText: $("includeAutoPostText").checked,
         includeManualPostText: $("includeManualPostText").checked,
@@ -6634,6 +6669,10 @@ ${text}`;
     const X_OAUTH_STATE_KEY = "umbrellaMangaXOAuthState";
     const X_OAUTH_STATE_CHARACTER_KEY = "umbrellaMangaXOAuthStateCharacter";
     const X_OAUTH_SCOPES = "tweet.read tweet.write users.read media.write offline.access";
+    const X_DEFAULT_EXPECTED_USERNAMES = {
+      "ヴェル13世": "velxiii13",
+      "べるぼ": "bellbo13"
+    };
     const CLOUD_SYNC_KEY = "umbrellaMangaCloudSyncKey";
     const WP_SITE_URL_KEY = "umbrellaMangaWpSiteUrl";
     const WP_USERNAME_KEY = "umbrellaMangaWpUsername";
@@ -6667,7 +6706,7 @@ ${text}`;
     const VAULT_NAME = "Obsidian Folder";
     const ACTIVE_IDEA_FIELD_IDS = [
       "character", "imagePatternName", "title", "subtitle", "theme", "aim",
-      "p1", "p2", "p3", "p4", "manualPostText", "autoPostText", "ideaHashtags", "hashtagPostMode", "manualIdeaSeed"
+      "p1", "p2", "p3", "p4", "manualPostText", "autoPostText", "ideaHashtags", "hashtagPostMode", "autoPostTextMode", "manualIdeaSeed"
     ];
     const ACTIVE_IDEA_CHECK_IDS = [
       "question", "logo", "chatGptReferenceInstruction",
@@ -6951,6 +6990,7 @@ ${text}`;
         return;
       }
       clearIdeaSummaryReset();
+      syncAutoPostTextMode();
       const payload = { savedAt: new Date().toISOString() };
       ACTIVE_IDEA_FIELD_IDS.forEach((id) => {
         if ($(id)) payload[id] = $(id).value;
@@ -6972,6 +7012,7 @@ ${text}`;
         ACTIVE_IDEA_CHECK_IDS.forEach((id) => {
           if ($(id) && payload[id] !== undefined) $(id).checked = payload[id];
         });
+        setAutoPostTextMode(payload.autoPostTextMode, payload);
         if (payload.character) {
           activeScheduleCharacter = setActiveCharacter(payload.character);
           updateProfilePanel();
@@ -7790,6 +7831,7 @@ ${text}`;
         fixedHashtags: d.fixedHashtags,
         ideaHashtags: d.ideaHashtags,
         hashtagPostMode: d.hashtagPostMode,
+        autoPostTextMode: d.autoPostTextMode,
         createAutoPostText: d.createAutoPostText,
         includeAutoPostText: d.includeAutoPostText,
         includeManualPostText: d.includeManualPostText,
@@ -7832,7 +7874,7 @@ ${text}`;
       $("fixedHashtags").value = item.fixedHashtags || item.manualHashtags || (characterData[item.character || "ヴェル13世"] || characterData["ヴェル13世"]).tags || "";
       $("ideaHashtags").value = item.ideaHashtags || "";
       $("hashtagPostMode").value = normalizeHashtagPostMode(item.hashtagPostMode, item);
-      $("createAutoPostText").checked = !!item.createAutoPostText;
+      setAutoPostTextMode(item.autoPostTextMode, item);
       $("includeAutoPostText").checked = !!item.includeAutoPostText;
       $("includeManualPostText").checked = !!item.includeManualPostText;
       $("createIdeaHashtags").checked = item.createIdeaHashtags !== false;
@@ -7913,7 +7955,7 @@ ${item.autoPostText || "-"}
       const allowed = [
         "id", "type", "createdAt", "character", "imagePatternName", "title", "subtitle",
         "theme", "aim", "manualPostText", "autoPostText", "fixedHashtags", "ideaHashtags",
-        "hashtagPostMode", "createAutoPostText", "includeAutoPostText", "includeManualPostText", "createIdeaHashtags", "includeIdeaHashtags",
+        "hashtagPostMode", "autoPostTextMode", "createAutoPostText", "includeAutoPostText", "includeManualPostText", "createIdeaHashtags", "includeIdeaHashtags",
         "manualHashtags", "platform", "date", "time", "aiProvider", "aiModel",
         "imagePath", "imageId", "imageFilename", "imageModel", "imageCreatedAt",
         "imageKeptAt", "imageSaveStatus", "localImagePath", "localImageSavedAt", "localImageSaveStatus",
@@ -8702,7 +8744,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       if (status === "done") {
         clearReservationDateTimeEditor("予約投稿完了にしたので、変更後の日時欄をクリアしました。");
         clearGeneratedImageAfterReservation();
-        clearIdeaSummaryFieldsAfterReservation();
+        clearIdeaSummaryFieldsAfterReservation(target.character || val("character"));
         clearSubCharacterSelection(target.character || val("character"));
         saveDraft();
       }
@@ -9001,8 +9043,13 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       return `${X_EXPECTED_USERNAME_KEY_PREFIX}_${xTokenCharacter(character)}`;
     }
 
+    function defaultXExpectedUsernameForCharacter(character = val("character")) {
+      return normalizeXUsername(X_DEFAULT_EXPECTED_USERNAMES[xTokenCharacter(character)] || "");
+    }
+
     function getXExpectedUsernameForCharacter(character = val("character")) {
-      return normalizeXUsername(localStorage.getItem(xExpectedUsernameKey(character)) || "");
+      const saved = normalizeXUsername(localStorage.getItem(xExpectedUsernameKey(character)) || "");
+      return saved || defaultXExpectedUsernameForCharacter(character);
     }
 
     function loadXExpectedUsername(character = val("character")) {
@@ -9015,15 +9062,17 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       if (!$("xExpectedUsername")) return "";
       const targetCharacter = xTokenCharacter(character);
       const username = normalizeXUsername($("xExpectedUsername").value);
+      const defaultUsername = defaultXExpectedUsernameForCharacter(targetCharacter);
+      const effectiveUsername = username || defaultUsername;
       if (username) localStorage.setItem(xExpectedUsernameKey(targetCharacter), username);
       else localStorage.removeItem(xExpectedUsernameKey(targetCharacter));
-      syncServerClientState(xExpectedUsernameKey(targetCharacter), username || "");
+      syncServerClientState(xExpectedUsernameKey(targetCharacter), effectiveUsername || "");
       if (showMessage) {
-        setXPostStatus(username
-          ? `${targetCharacter}用のXユーザー名確認を保存しました: @${username}`
+        setXPostStatus(effectiveUsername
+          ? `${targetCharacter}用のXユーザー名確認を保存しました: @${effectiveUsername}`
           : `${targetCharacter}用のXユーザー名確認を空にしました。`);
       }
-      return username;
+      return effectiveUsername;
     }
 
     function assertXUserMatchesExpected(character, user) {
@@ -9273,7 +9322,11 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     async function startXOAuthLogin() {
       if (window.__umbrellaXOAuthStarting) return;
       window.__umbrellaXOAuthStarting = true;
-      const targetCharacter = xOAuthOperationCharacter();
+      const activeTargetCharacter = xTokenCharacter(activeCharacter() || val("character"));
+      if ($("xOAuthCharacter") && activeTargetCharacter && $("xOAuthCharacter").value !== activeTargetCharacter) {
+        loadXOAuthSettings(activeTargetCharacter);
+      }
+      const targetCharacter = xTokenCharacter(activeTargetCharacter || xOAuthOperationCharacter());
       clearXOAuthState();
       let popup = null;
       try {
@@ -9521,6 +9574,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         fixedHashtags: $("fixedHashtags") ? val("fixedHashtags") : "",
         ideaHashtags: $("ideaHashtags") ? val("ideaHashtags") : "",
         hashtagPostMode: $("hashtagPostMode") ? val("hashtagPostMode") : "mixed",
+        autoPostTextMode: syncAutoPostTextMode(),
         createAutoPostText: $("createAutoPostText") ? $("createAutoPostText").checked : false,
         includeAutoPostText: $("includeAutoPostText") ? $("includeAutoPostText").checked : false,
         includeManualPostText: $("includeManualPostText") ? $("includeManualPostText").checked : false,
@@ -9543,7 +9597,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         : ((characterData[val("character")] || characterData["ヴェル13世"]).tags || "");
       $("ideaHashtags").value = item ? (item.ideaHashtags || "") : "";
       $("hashtagPostMode").value = item ? normalizeHashtagPostMode(item.hashtagPostMode, item) : "mixed";
-      $("createAutoPostText").checked = item ? !!item.createAutoPostText : false;
+      setAutoPostTextMode(item ? item.autoPostTextMode : "none", item || {});
       $("includeAutoPostText").checked = item ? !!item.includeAutoPostText : false;
       $("includeManualPostText").checked = item ? !!item.includeManualPostText : false;
       $("createIdeaHashtags").checked = item ? item.createIdeaHashtags !== false : true;
@@ -9554,7 +9608,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     function persistSelectedReservationTextOverrides(item = selectedReservation()) {
       if (!item) return null;
       const patch = currentManualPostFields();
-      const same = ["manualPostText", "autoPostText", "fixedHashtags", "ideaHashtags", "hashtagPostMode", "createAutoPostText", "includeAutoPostText", "includeManualPostText", "createIdeaHashtags", "includeIdeaHashtags"]
+      const same = ["manualPostText", "autoPostText", "fixedHashtags", "ideaHashtags", "hashtagPostMode", "autoPostTextMode", "createAutoPostText", "includeAutoPostText", "includeManualPostText", "createIdeaHashtags", "includeIdeaHashtags"]
         .every((key) => (item[key] || (typeof patch[key] === "boolean" ? false : "")) === patch[key]);
       if (same) return item;
       return updateReservationById(item.id, patch) || { ...item, ...patch };
@@ -10260,7 +10314,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         targetItem = persistSelectedReservationTextOverrides(targetItem) || targetItem;
         await postReservationToWordPress(targetItem, null, null, false);
         clearGeneratedImageAfterReservation("WordPress投稿/予約が完了したので、漫画画像生成欄の表示をクリアしました。");
-        clearIdeaSummaryFieldsAfterReservation();
+        clearIdeaSummaryFieldsAfterReservation(targetItem.character || val("character"));
       } catch (error) {
         const message = error.message && error.message.includes("Failed to fetch")
           ? "ローカル投稿サーバーへ接続できませんでした。X投稿サーバー起動.batを起動してください。"
@@ -10772,7 +10826,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         const nextDate = advanceNextScheduledDateAfter(item);
         clearReservationDateTimeEditor("予約投稿をセットしたので、変更後の日時欄をクリアしました。");
         clearGeneratedImageAfterReservation();
-        clearIdeaSummaryFieldsAfterReservation();
+        clearIdeaSummaryFieldsAfterReservation(item.character || val("character"));
         clearSubCharacterSelection(item.character || val("character"));
         saveDraft();
         const gitPushMessage = gitPushStatusText(json.gitPush);
@@ -10870,7 +10924,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         const nextDate = advanceNextScheduledDateAfter(item);
         clearReservationDateTimeEditor("Xへ投稿したので、変更後の日時欄をクリアしました。");
         clearGeneratedImageAfterReservation();
-        clearIdeaSummaryFieldsAfterReservation();
+        clearIdeaSummaryFieldsAfterReservation(item.character || val("character"));
         clearSubCharacterSelection(item.character || val("character"));
         saveDraft();
         let message = `Xへ投稿しました: ${post.url}${localSaveMessage} / 次の予約日: ${nextDate}`;
@@ -12073,11 +12127,14 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       setGeneratedImageStatus(message);
     }
 
-    function clearIdeaSummaryFieldsAfterReservation() {
+    function clearIdeaSummaryFieldsAfterReservation(character = activeSnsSettingsCharacter || activeScheduleCharacter || activeCharacter()) {
       clearActiveIdeaDraft();
       ["title", "subtitle", "theme", "aim", "p1", "p2", "p3", "p4", "manualPostText", "autoPostText", "ideaHashtags", "manualIdeaSeed"].forEach((id) => {
         if ($(id)) $(id).value = "";
       });
+      if ($("includeManualPostText")) $("includeManualPostText").checked = false;
+      if ($("includeAutoPostText")) $("includeAutoPostText").checked = false;
+      saveSnsTextSettings(character || activeCharacter());
       localStorage.removeItem(MANUAL_INPUT_MANGA_IDEA_KEY);
       markIdeaSummaryReset();
       render();
@@ -12997,6 +13054,11 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       });
     }
     checks.forEach((id) => $(id).addEventListener("change", render));
+    $("autoPostTextMode").addEventListener("change", () => {
+      syncAutoPostTextMode();
+      saveSnsTextSettings(activeSnsSettingsCharacter || activeCharacter());
+      render();
+    });
     $("generate").addEventListener("click", render);
     $("applyPreset").addEventListener("click", applyPreset);
     $("saveCustomCharacterPrompt").addEventListener("click", () => saveCustomCharacterPrompt(true));
@@ -13050,7 +13112,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       $("chatGptReferenceInstruction").checked = true;
       $("autoStock").checked = true;
       $("autoObsidian").checked = false;
-      $("createAutoPostText").checked = false;
+      setAutoPostTextMode("none");
       $("includeAutoPostText").checked = false;
       $("includeManualPostText").checked = false;
       $("createIdeaHashtags").checked = true;
@@ -13469,7 +13531,8 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       const duplicateBlock = duplicateAvoidanceBlock(character);
       const manualIdeaSeed = String(options.manualIdeaSeed || "").trim();
       const manualCharacterPrompt = customCharacterPromptBlock(character, $("customCharacterPrompt") ? val("customCharacterPrompt") : "");
-      const wantAutoPostText = $("createAutoPostText") && $("createAutoPostText").checked;
+      const autoPostTextMode = currentAutoPostTextMode();
+      const wantAutoPostText = autoPostTextMode !== "none";
       const wantIdeaHashtags = !$("createIdeaHashtags") || $("createIdeaHashtags").checked;
       const selectedSubCharacters = Array.from(document.querySelectorAll(".subchar-check:checked")).map((el) => el.value);
       const subCharacterPromptBlock = selectedSubCharacters.length
@@ -13498,8 +13561,13 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       const manualIdeaBlock = manualIdeaSeed
         ? `\n## ネタにしたい内容・想い（ユーザー指定）\n${manualIdeaSeed}\n\n## 指定内容から作る時のルール（最優先）\n- 上の指定文は「そのまま漫画にしてほしい素材」として扱う。テーマ・感情・方向性を大きく変えない。\n- 指定文にタイトルが明示されている場合（例：「タイトル：〜」や冒頭の題名）は、そのタイトルをそのまま output の title に使う。変えない。\n- 指定文に含まれる感情・体験・キーワードを必ず台本に反映させる。別のテーマや感情に置き換えない。\n- 4コマの感情の流れは指定文の内容に従う。上の「制作ルール」のコマ構成より指定文の流れを優先する。\n- セリフは説明文にしない。キャラが実際に口にする会話・独白の形で書く。\n- 各コマのセリフは必ず上の「口調・言葉づかい」に記載されたキャラクターの話し方で書く。地の文や説明口調にしない。\n- 指定文をそのまま長く引用しない。漫画用の短いセリフ・描写として凝縮する。\n- べるぼが選択されている場合は、指定文の感情・体験を「制作ログ」や「教育発信」に変換しない。指定された感情に正直に、読者を追い込まず、上から教えない形で表現する。\n- ヴェル13世が選択されている場合は、何者にもなれなかった人がそれでも一歩進む葛藤に寄せる。\n- カーラ・マンソンが選択されている場合は、本音と執着、自分を取り戻す物語に寄せる。\n`
         : "";
+      const autoPostTextInstruction = autoPostTextMode === "short"
+        ? `## ネタ用投稿文ルール\n- autoPostTextはX無料投稿でも使いやすいように日本語140文字以内にする。\n- 短すぎないよう80〜140文字を目安に、ネタのタイトル・感情・読者への一言を入れる。\n- ハッシュタグは入れない。\n`
+        : autoPostTextMode === "long"
+          ? `## ネタ用投稿文ルール\n- autoPostTextは140文字を超えて、文字制限を気にせず、ネタの内容に沿ってしっかりめに書く。\n- 2〜5文程度で、読者への共感・作品の背景・最後の一言を入れる。\n- ハッシュタグは入れない。\n`
+          : "";
       const optionalOutput = [
-        wantAutoPostText ? '  "autoPostText": "このネタに合う短い投稿文。ハッシュタグは入れない",': "",
+        wantAutoPostText ? '  "autoPostText": "このネタに合うSNS投稿文。ハッシュタグは入れない",': "",
         wantIdeaHashtags ? '  "ideaHashtags": "#このネタ用 #追加タグ #3〜5個",' : ""
       ].filter(Boolean).join("\n");
       return `あなたはUmbrella Paradeの漫画制作アシスタントです。
@@ -13526,6 +13594,7 @@ ${carlaStageRules}
 ${dialogueRules}
 ${duplicateBlock}
 ${manualIdeaBlock}
+${autoPostTextInstruction}
 ## 出力形式（必ずこのJSONのみ返してください）
 {
   "title": "〇〇な日（例：止まってる日）",
@@ -14148,9 +14217,36 @@ ${JSON.stringify({
       return normalizeHashtagText(candidates.slice(0, 5).join(" "));
     }
 
-    function fallbackAutoPostTextFromCurrent() {
+    function trimByCharacters(text, max = 140) {
+      const chars = Array.from(String(text || "").trim());
+      if (chars.length <= max) return chars.join("");
+      return chars.slice(0, Math.max(0, max - 1)).join("").replace(/[、。,.，．\s]+$/g, "") + "…";
+    }
+
+    function sanitizeAutoPostText(text, mode = currentAutoPostTextMode()) {
+      const cleaned = String(text || "")
+        .replace(/#[^\s#]+/g, "")
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+      return mode === "short" ? trimByCharacters(cleaned, 140) : cleaned;
+    }
+
+    function fallbackAutoPostTextFromCurrent(mode = currentAutoPostTextMode()) {
       const d = data();
-      return [d.title, d.subtitle].filter(Boolean).join("\n").trim();
+      const shortText = [
+        d.title ? `「${d.title}」` : "",
+        d.subtitle || d.theme || "",
+        d.aim ? ` ${d.aim}` : ""
+      ].filter(Boolean).join("。").replace(/。。+/g, "。");
+      if (mode === "short") return sanitizeAutoPostText(shortText, "short");
+      return sanitizeAutoPostText([
+        d.title ? `今回は「${d.title}」というテーマで作りました。` : "",
+        d.subtitle || d.theme ? `${d.subtitle || d.theme}` : "",
+        d.aim ? `${d.aim}` : "",
+        "短い一言だけでは伝えきれない部分もあるので、この漫画の中にある迷いや小さな前進まで含めて見てもらえたらうれしいです。",
+        "少しでも、今の自分に重なるところがあればうれしいです。"
+      ].filter(Boolean).join("\n\n"), "long");
     }
 
     function cleanManualStructuredValue(value) {
@@ -14375,8 +14471,9 @@ Panel ${panelNumber} visible dialogue: ${split.speech || ""}`;
         if (parsed.p2) $("p2").value = parsed.p2;
         if (parsed.p3) $("p3").value = parsed.p3;
         if (parsed.p4) $("p4").value = parsed.p4;
-        if ($("createAutoPostText").checked) {
-          $("autoPostText").value = String(parsed.autoPostText || "").trim() || fallbackAutoPostTextFromCurrent();
+        const autoTextMode = currentAutoPostTextMode();
+        if (autoTextMode !== "none") {
+          $("autoPostText").value = sanitizeAutoPostText(String(parsed.autoPostText || "").trim() || fallbackAutoPostTextFromCurrent(autoTextMode), autoTextMode);
         }
         if ($("createIdeaHashtags").checked) {
           $("ideaHashtags").value = normalizeHashtagText(parsed.ideaHashtags || fallbackIdeaHashtagsFromCurrent());
