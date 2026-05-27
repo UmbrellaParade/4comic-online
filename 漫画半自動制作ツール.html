@@ -9645,7 +9645,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       if (!item) return "";
       applyItem(item);
       const text = extractPlatformCaption(caption(data()), "X");
-      return trimXText(text, 260);
+      return String(text || "").trim();
     }
 
     async function copySelectedPlatformPostText() {
