@@ -13585,9 +13585,9 @@ ${autoPostTextToneRules[character] || "- 選択中キャラクターの口調・
 `
         : "";
       const autoPostTextInstruction = autoPostTextMode === "short"
-        ? `## ネタ用投稿文ルール\n- autoPostTextはX無料投稿でも使いやすいように日本語140文字以内にする。\n- 短すぎないよう80〜140文字を目安に、ネタの感情と余韻を入れる。\n- ハッシュタグは入れない。\n${autoPostTextToneBlock}`
+        ? `## ネタ用投稿文ルール\n- autoPostTextはX無料投稿でも使いやすいように日本語140文字以内にする。\n- 短すぎないよう80〜140文字を目安に、ネタの感情と余韻を入れる。\n- 必ず2〜3行に改行して書く。1行だけの文章にしない。\n- 改行はJSON文字列内の\\nとして入れる。\n- ハッシュタグは入れない。\n${autoPostTextToneBlock}`
         : autoPostTextMode === "long"
-          ? `## ネタ用投稿文ルール\n- autoPostTextは140文字を超えて、文字制限を気にせず、ネタの内容に沿ってしっかりめに書く。\n- 2〜5文程度で、感情の揺れ・背景・余韻を入れる。\n- ハッシュタグは入れない。\n${autoPostTextToneBlock}`
+          ? `## ネタ用投稿文ルール\n- autoPostTextは140文字を超えて、文字制限を気にせず、ネタの内容に沿ってしっかりめに書く。\n- 2〜5文程度で、感情の揺れ・背景・余韻を入れる。\n- 必ず2〜5行に改行して書く。1行だけの文章にしない。\n- 改行はJSON文字列内の\\nとして入れる。\n- ハッシュタグは入れない。\n${autoPostTextToneBlock}`
           : "";
       const optionalOutput = [
         wantAutoPostText ? '  "autoPostText": "このネタに合うSNS投稿文。ハッシュタグは入れない",': "",
@@ -14261,9 +14261,9 @@ ${JSON.stringify({
       const feeling = d.subtitle || d.theme || d.aim || "";
       const character = d.character || val("character") || "";
       const shortByCharacter = {
-        "カーラ・マンソン": `${title}。完璧に揃えた顔で笑うより、少しだけズレた本音の方が、今の私には息がしやすかった。`,
-        "ヴェル13世": `${title}。情けないとこもあるけどさ、でも、まだ終わりじゃないよな。今日は1つだけ進んでみるか。`,
-        "べるぼ": `${title}。${feeling || "作りながら少し見えてきたことがあります。"}無理に強く言い切らず、今日の制作ログとして残しておきます＾＾`
+        "カーラ・マンソン": `${title}。\n完璧に揃えた顔で笑うより、少しだけズレた本音の方が、今の私には息がしやすかった。`,
+        "ヴェル13世": `${title}。\n情けないとこもあるけどさ。\nでも、まだ終わりじゃないよな。今日は1つだけ進んでみるか。`,
+        "べるぼ": `${title}。\n${feeling || "作りながら少し見えてきたことがあります。"}\n無理に強く言い切らず、今日の制作ログとして残しておきます＾＾`
       };
       const longByCharacter = {
         "カーラ・マンソン": [
