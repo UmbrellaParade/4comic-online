@@ -54,6 +54,7 @@ const IMPORT_DIRS_PATH = path.join(DATA_DIR, "manga-import-directories.json");
 const OAUTH_TOKENS_PATH = path.join(DATA_DIR, "x-oauth-tokens.json");
 const RUNTIME_IMAGES_PATH = path.join(DATA_DIR, "runtime-images.json");
 const CLIENT_STATE_PATH = path.join(DATA_DIR, "client-state.json");
+const MANGA_IMAGE_CLEANUP_REPORT_PATH = path.join(DATA_DIR, "manga-image-cleanup-report.json");
 const SEED_IDEA_STOCK_PATH = path.join(__dirname, "seed-idea-stock.json");
 const SEED_RUNTIME_IMAGES_PATH = path.join(__dirname, "seed-runtime-images.json");
 const SEED_RUNTIME_IMAGES_DIR = path.join(__dirname, "seed-runtime-images");
@@ -3877,6 +3878,15 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && requestUrl.pathname === "/sync-key-status") {
     sendJson(res, 200, { ok: true, configured: !!clientStateSyncKey() });
+    return;
+  }
+
+  if (req.method === "GET" && requestUrl.pathname === "/maintenance-status") {
+    sendJson(res, 200, {
+      ok: true,
+      cleanup: readJsonFile(MANGA_IMAGE_CLEANUP_REPORT_PATH, null),
+      retentionDays: Number(process.env.MANGA_IMAGE_RETENTION_DAYS || 14)
+    });
     return;
   }
 

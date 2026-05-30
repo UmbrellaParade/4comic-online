@@ -1426,6 +1426,7 @@
           <div class="home-load-row"><span>投稿設定</span><span id="homeLoadPosting">確認中</span></div>
           <div class="home-load-row"><span>クラウド同期</span><span id="homeLoadCloud">確認中</span></div>
           <div class="home-load-row"><span>画像生成サーバー</span><span id="homeLoadServer">確認中</span></div>
+          <div class="home-load-row"><span>VPS画像整理</span><span id="homeLoadMaintenance">確認中</span></div>
         </div>
       </div>
     </div>
@@ -14589,6 +14590,31 @@ Panel ${panelNumber} visible dialogue: ${split.speech || ""}`;
       }
     }
 
+    async function checkMaintenanceStatus() {
+      const el = $("homeLoadMaintenance");
+      if (!el || !onlineStateAvailable()) return;
+      try {
+        const res = await fetch(`${scheduleServerUrl()}/maintenance-status`);
+        const json = await res.json().catch(() => ({}));
+        const cleanup = json.cleanup || null;
+        if (!cleanup || !cleanup.generatedAt) {
+          el.textContent = `未実行 / ${json.retentionDays || 14}日保管`;
+          return;
+        }
+        const ranAt = new Date(cleanup.generatedAt).toLocaleString("ja-JP", {
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit"
+        });
+        const mode = cleanup.dryRun ? "確認のみ" : "削除済";
+        el.textContent = `${ranAt} / ${mode} ${cleanup.deleted || 0}件 / ${cleanup.retentionDays || json.retentionDays || 14}日保管`;
+      } catch (e) {
+        console.warn("maintenance-status check failed", e);
+        el.textContent = "未確認";
+      }
+    }
+
     async function autoInitialCloudPush() {
       if (!onlineStateAvailable()) return;
       const lastPush = localStorage.getItem(LAST_CLOUD_PUSH_KEY);
@@ -14685,6 +14711,7 @@ Panel ${panelNumber} visible dialogue: ${split.speech || ""}`;
       render();
       autoInitialCloudPush().catch(() => {});
       checkSyncKeyServerStatus().catch(() => {});
+      checkMaintenanceStatus().catch(() => {});
     }
 
     initializeTool();

@@ -21,8 +21,10 @@ x-scheduled-posts.json
 runtime-images.json
 data/x-scheduled-posts.json
 data/runtime-images.json
+data/manga-image-cleanup-report.json
 data/runtime-images/
 data/uploads/
+data/sync-logs/
 
 # Local backups
 バックアップ/

@@ -12,6 +12,6 @@
     "scheduler": "node x-scheduler-runner.js",
     "build:seed-ideas": "node scripts/build-seed-idea-stock.js",
     "build:seed-images": "node scripts/build-seed-runtime-images.js",
-    "check": "node --check x-post-server.js && node --check x-scheduler-runner.js && node --check scripts/build-seed-idea-stock.js && node --check scripts/build-seed-runtime-images.js"
+    "check": "node --check x-post-server.js && node --check x-scheduler-runner.js && node --check scripts/build-seed-idea-stock.js && node --check scripts/build-seed-runtime-images.js && node --check scripts/cleanup-vps-manga-images.js"
   }
 }
