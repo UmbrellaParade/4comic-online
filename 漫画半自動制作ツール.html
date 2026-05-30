@@ -12132,8 +12132,6 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       ["title", "subtitle", "theme", "aim", "p1", "p2", "p3", "p4", "manualPostText", "autoPostText", "ideaHashtags", "manualIdeaSeed"].forEach((id) => {
         if ($(id)) $(id).value = "";
       });
-      if ($("includeManualPostText")) $("includeManualPostText").checked = false;
-      if ($("includeAutoPostText")) $("includeAutoPostText").checked = false;
       saveSnsTextSettings(character || activeCharacter());
       localStorage.removeItem(MANUAL_INPUT_MANGA_IDEA_KEY);
       markIdeaSummaryReset();
