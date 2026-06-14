@@ -10493,6 +10493,29 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       return { date: iso.slice(0, 10), time: iso.slice(11, 16) };
     }
 
+    function localDateInputFromIso(value) {
+      const timestamp = Date.parse(value || "");
+      if (!Number.isFinite(timestamp)) return "";
+      const jst = new Date(timestamp + 9 * 60 * 60 * 1000);
+      return jst.toISOString().slice(0, 10);
+    }
+
+    function calendarDateForReservation(item) {
+      if (!item) return "";
+      const isImmediateXPost = reservationStatus(item) === "done"
+        && item.xPostId
+        && item.xPostedAt
+        && !item.xScheduledAt;
+      if (isImmediateXPost) return localDateInputFromIso(item.xPostedAt) || item.date || "";
+      return item.date || "";
+    }
+
+    function calendarDisplayReservation(item) {
+      const date = calendarDateForReservation(item);
+      if (!date || date === item.date) return item;
+      return { ...item, date, originalScheduledDate: item.date || "" };
+    }
+
     function calendarItemKey(item) {
       return `${item.date || ""}|${item.character || ""}|${item.title || ""}`;
     }
@@ -10509,7 +10532,8 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     function calendarReservationsWithXScheduleOverlay(showAllCharacters) {
       const reservations = readList(RESERVATION_KEY)
         .filter(hasCalendarPostRecord)
-        .filter((item) => showAllCharacters || sameActiveCharacter(item));
+        .filter((item) => showAllCharacters || sameActiveCharacter(item))
+        .map(calendarDisplayReservation);
       const scheduleJobs = visibleXScheduleJobs(latestXScheduleJobs).filter((job) => showAllCharacters || sameActiveCharacter(job));
       const jobsByReservationId = new Map();
       const pendingKeys = new Set();
@@ -10922,13 +10946,14 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
           localSaveMessage = ` / 画像保存エラー: ${saveError.message}`;
           messageType = "err";
         }
-        const nextDate = advanceNextScheduledDateAfter(item);
         clearReservationDateTimeEditor("Xへ投稿したので、変更後の日時欄をクリアしました。");
         clearGeneratedImageAfterReservation();
         clearIdeaSummaryFieldsAfterReservation(item.character || val("character"));
         clearSubCharacterSelection(item.character || val("character"));
         saveDraft();
-        let message = `Xへ投稿しました: ${post.url}${localSaveMessage} / 次の予約日: ${nextDate}`;
+        render();
+        renderCalendar();
+        let message = `Xへ投稿しました: ${post.url}${localSaveMessage}`;
         if (wordpressShouldPostWithX(item.character)) {
           try {
             const wpResult = await postReservationToWordPress(targetItem, image, null, true, { postMode: "publish" });
@@ -10943,7 +10968,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
           }
         }
         setXPostStatus(message, messageType);
-        $("statusText").textContent = `Xへ投稿し、予約投稿完了に移動しました。次の予約日は${nextDate}にしました。`;
+        $("statusText").textContent = "Xへ投稿し、予約投稿完了に移動しました。予定日は変更していません。";
         setTimeout(() => $("statusText").textContent = "", 3200);
       } catch (error) {
         console.error(error);
