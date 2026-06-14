@@ -9232,7 +9232,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         const expiresAt = Date.now() + Math.max(60, Number(token.expires_in)) * 1000;
         localStorage.setItem(xTokenExpiresAtKey(targetCharacter), String(expiresAt));
       }
-      if (xTokenCharacter() === targetCharacter && $("xAccessToken")) $("xAccessToken").value = accessToken;
+      if (xOAuthOperationCharacter() === targetCharacter && $("xAccessToken")) $("xAccessToken").value = accessToken;
       updateXOAuthSavedStatus(targetCharacter);
       if (options.sync !== false) syncXTokenToLocalServer(targetCharacter, false);
       if (!options.quiet) setXPostStatus(`${targetCharacter}用のOAuth 2.0 User Context tokenを保存しました。`);
@@ -9264,7 +9264,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
           assertXUserMatchesExpected(targetCharacter, user);
         }
         saveOAuthTokenBundle(json.character || targetCharacter, json.token, { quiet: true, sync: false });
-        if (xTokenCharacter() === targetCharacter) {
+        if (xOAuthOperationCharacter() === targetCharacter) {
           if ($("xAccessToken")) $("xAccessToken").value = getXAccessTokenForCharacter(targetCharacter);
           setXOAuthStatus("取得済み/自動復元");
         }
@@ -9323,11 +9323,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     async function startXOAuthLogin() {
       if (window.__umbrellaXOAuthStarting) return;
       window.__umbrellaXOAuthStarting = true;
-      const activeTargetCharacter = xTokenCharacter(activeCharacter() || val("character"));
-      if ($("xOAuthCharacter") && activeTargetCharacter && $("xOAuthCharacter").value !== activeTargetCharacter) {
-        loadXOAuthSettings(activeTargetCharacter);
-      }
-      const targetCharacter = xTokenCharacter(activeTargetCharacter || xOAuthOperationCharacter());
+      const targetCharacter = xOAuthOperationCharacter();
       clearXOAuthState();
       let popup = null;
       try {
