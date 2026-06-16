@@ -2055,6 +2055,7 @@ async function handleOAuthStart(req, res) {
   const state = randomToken(32);
   const codeVerifier = randomToken(64);
   const codeChallenge = base64Url(crypto.createHash("sha256").update(codeVerifier).digest());
+  const authorizeHost = payload.authorizeHost === "x.com" ? "x.com" : "twitter.com";
   oauthSessions.set(state, {
     clientId,
     clientSecret,
@@ -2065,7 +2066,7 @@ async function handleOAuthStart(req, res) {
     codeVerifier,
     createdAt: Date.now()
   });
-  const authorizeUrl = new URL("https://x.com/i/oauth2/authorize");
+  const authorizeUrl = new URL(`https://${authorizeHost}/i/oauth2/authorize`);
   authorizeUrl.searchParams.set("response_type", "code");
   authorizeUrl.searchParams.set("client_id", clientId);
   authorizeUrl.searchParams.set("redirect_uri", redirectUri);
@@ -2076,8 +2077,8 @@ async function handleOAuthStart(req, res) {
   if (payload.forceLogin === true) {
     authorizeUrl.searchParams.set("force_login", "true");
   }
-  log("OAUTH_START", { character: payload.character || "", scopes, redirectUri });
-  sendJson(res, 200, { ok: true, authorizeUrl: authorizeUrl.toString(), state, redirectUri, scopes });
+  log("OAUTH_START", { character: payload.character || "", scopes, redirectUri, authorizeHost });
+  sendJson(res, 200, { ok: true, authorizeUrl: authorizeUrl.toString(), state, redirectUri, scopes, authorizeHost });
 }
 
 async function handleOAuthCallback(req, res) {
