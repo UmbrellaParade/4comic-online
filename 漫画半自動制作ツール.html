@@ -2051,7 +2051,9 @@
             </div>
             <div class="check-row">
               <label><input id="xMadeWithAi" type="checkbox" checked> AI生成メディアとして送信</label>
+              <label><input id="xOAuthForceLogin" type="checkbox"> Xアカウント切替を強制する</label>
             </div>
+            <p class="hint">Xログイン画面でリダイレクトが繰り返される時は「Xアカウント切替を強制する」をOFFのまま試してください。違うアカウントで認可された場合は、上のXユーザー名確認で保存を止めます。</p>
             <div class="grid cols">
               <label>ローカル投稿サーバーURL
                 <input id="xLocalServerUrl" type="url" placeholder="http://127.0.0.1:8787">
@@ -6667,6 +6669,7 @@ ${text}`;
     const X_OAUTH_CLIENT_ID_KEY_PREFIX = "umbrellaMangaXOAuthClientIdByCharacter";
     const X_OAUTH_CLIENT_SECRET_KEY_PREFIX = "umbrellaMangaXOAuthClientSecretByCharacter";
     const X_EXPECTED_USERNAME_KEY_PREFIX = "umbrellaMangaXExpectedUsernameByCharacter";
+    const X_OAUTH_FORCE_LOGIN_KEY_PREFIX = "umbrellaMangaXOAuthForceLoginByCharacter";
     const X_OAUTH_STATE_KEY = "umbrellaMangaXOAuthState";
     const X_OAUTH_STATE_CHARACTER_KEY = "umbrellaMangaXOAuthStateCharacter";
     const X_OAUTH_SCOPES = "tweet.read tweet.write users.read media.write offline.access";
@@ -9044,6 +9047,10 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       return `${X_EXPECTED_USERNAME_KEY_PREFIX}_${xTokenCharacter(character)}`;
     }
 
+    function xOAuthForceLoginKey(character = val("character")) {
+      return `${X_OAUTH_FORCE_LOGIN_KEY_PREFIX}_${xTokenCharacter(character)}`;
+    }
+
     function defaultXExpectedUsernameForCharacter(character = val("character")) {
       return normalizeXUsername(X_DEFAULT_EXPECTED_USERNAMES[xTokenCharacter(character)] || "");
     }
@@ -9124,10 +9131,22 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       activeXOAuthSettingsCharacter = targetCharacter;
       updateXOAuthCharacterControl(targetCharacter);
       loadXExpectedUsername(targetCharacter);
+      if ($("xOAuthForceLogin")) $("xOAuthForceLogin").checked = localStorage.getItem(xOAuthForceLoginKey(targetCharacter)) === "1";
       if ($("xOAuthClientId")) $("xOAuthClientId").value = settings.clientId;
       if ($("xOAuthClientSecret")) $("xOAuthClientSecret").value = settings.clientSecret;
       updateXOAuthRedirectUri();
       updateXOAuthSavedStatus(targetCharacter);
+    }
+
+    function saveXOAuthForceLogin(showMessage = false, character = xOAuthOperationCharacter()) {
+      if (!$("xOAuthForceLogin")) return false;
+      const targetCharacter = xTokenCharacter(character);
+      const enabled = !!$("xOAuthForceLogin").checked;
+      if (enabled) localStorage.setItem(xOAuthForceLoginKey(targetCharacter), "1");
+      else localStorage.removeItem(xOAuthForceLoginKey(targetCharacter));
+      syncServerClientState(xOAuthForceLoginKey(targetCharacter), enabled ? "1" : "");
+      if (showMessage) setXPostStatus(`${targetCharacter}用のXアカウント切替強制を${enabled ? "ON" : "OFF"}にしました。`);
+      return enabled;
     }
 
     function updateXOAuthSavedStatus(character = val("character")) {
@@ -9357,7 +9376,8 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
             clientSecret,
             redirectUri,
             scopes: X_OAUTH_SCOPES,
-            expectedUsername: getXExpectedUsernameForCharacter(targetCharacter)
+            expectedUsername: getXExpectedUsernameForCharacter(targetCharacter),
+            forceLogin: saveXOAuthForceLogin(false, targetCharacter)
           })
         });
         const json = await response.json().catch(() => ({}));
@@ -13285,6 +13305,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     });
     $("xExpectedUsername").addEventListener("input", () => saveXExpectedUsername(false));
     $("xExpectedUsername").addEventListener("change", () => saveXExpectedUsername(true));
+    $("xOAuthForceLogin").addEventListener("change", () => saveXOAuthForceLogin(true));
     ["xOAuthClientId", "xOAuthClientSecret"].forEach((id) => {
       const input = $(id);
       if (!input) return;
