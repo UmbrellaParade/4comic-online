@@ -9501,7 +9501,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       const response = await fetch(`${scheduleServerUrl()}/oauth/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ character: targetCharacter, clientId, clientSecret, refreshToken })
+        body: JSON.stringify({ character: targetCharacter, clientId, clientSecret })
       });
       const json = await response.json().catch(() => ({}));
       if (!response.ok || !json.ok) throw new Error(json.error || stringifyXDetail(json.detail) || `HTTP ${response.status}`);

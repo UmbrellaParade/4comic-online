@@ -2141,7 +2141,7 @@ async function handleOAuthRefresh(req, res) {
   const stored = storedOAuthResult(character) || {};
   const clientId = String(payload.clientId || stored.clientId || "").trim();
   const clientSecret = String(payload.clientSecret || stored.clientSecret || "").trim();
-  const refreshToken = String(payload.refreshToken || stored.token?.refresh_token || "").trim();
+  const refreshToken = String(stored.token?.refresh_token || payload.refreshToken || "").trim();
   if (!clientId) throw new Error("X OAuth Client IDを入力してください。");
   if (!refreshToken) throw new Error("Refresh Tokenが保存されていません。もう一度Xログインで取得してください。");
   const token = await oauthTokenRequest({
