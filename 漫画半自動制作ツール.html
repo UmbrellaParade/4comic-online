@@ -2056,8 +2056,8 @@
             <p class="hint">Xログイン画面でリダイレクトが繰り返される時は「Xアカウント切替を強制する」をOFFのまま試してください。違うアカウントで認可された場合は、上のXユーザー名確認で保存を止めます。</p>
             <label>OAuth認可画面
               <select id="xOAuthAuthorizeHost">
-                <option value="twitter.com">twitter.com（Xでループする時用）</option>
                 <option value="x.com">x.com（標準）</option>
+                <option value="twitter.com">twitter.com（x.comでループする時用）</option>
               </select>
             </label>
             <div class="grid cols">
@@ -6677,6 +6677,8 @@ ${text}`;
     const X_EXPECTED_USERNAME_KEY_PREFIX = "umbrellaMangaXExpectedUsernameByCharacter";
     const X_OAUTH_FORCE_LOGIN_KEY_PREFIX = "umbrellaMangaXOAuthForceLoginByCharacter";
     const X_OAUTH_AUTHORIZE_HOST_KEY_PREFIX = "umbrellaMangaXOAuthAuthorizeHostByCharacter";
+    const X_OAUTH_AUTHORIZE_HOST_DEFAULT = "x.com";
+    const X_OAUTH_AUTHORIZE_HOST_MIGRATION_KEY = "umbrellaMangaXOAuthAuthorizeHostDefault_20260617";
     const X_OAUTH_STATE_KEY = "umbrellaMangaXOAuthState";
     const X_OAUTH_STATE_CHARACTER_KEY = "umbrellaMangaXOAuthStateCharacter";
     const X_OAUTH_SCOPES = "tweet.read tweet.write users.read media.write offline.access";
@@ -9066,6 +9068,20 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       return host === "x.com" ? "x.com" : "twitter.com";
     }
 
+    function migrateXOAuthAuthorizeHostDefault() {
+      if (localStorage.getItem(X_OAUTH_AUTHORIZE_HOST_MIGRATION_KEY) === "1") return;
+      for (const character of cloudSyncCharacters()) {
+        const key = xOAuthAuthorizeHostKey(character);
+        const saved = localStorage.getItem(key);
+        if (!saved || saved === "twitter.com") {
+          localStorage.setItem(key, X_OAUTH_AUTHORIZE_HOST_DEFAULT);
+        }
+        localStorage.removeItem(xOAuthForceLoginKey(character));
+        syncServerClientState(xOAuthForceLoginKey(character), "");
+      }
+      localStorage.setItem(X_OAUTH_AUTHORIZE_HOST_MIGRATION_KEY, "1");
+    }
+
     function defaultXExpectedUsernameForCharacter(character = val("character")) {
       return normalizeXUsername(X_DEFAULT_EXPECTED_USERNAMES[xTokenCharacter(character)] || "");
     }
@@ -9147,7 +9163,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       updateXOAuthCharacterControl(targetCharacter);
       loadXExpectedUsername(targetCharacter);
       if ($("xOAuthForceLogin")) $("xOAuthForceLogin").checked = localStorage.getItem(xOAuthForceLoginKey(targetCharacter)) === "1";
-      if ($("xOAuthAuthorizeHost")) $("xOAuthAuthorizeHost").value = normalizedXOAuthAuthorizeHost(localStorage.getItem(xOAuthAuthorizeHostKey(targetCharacter)) || "twitter.com");
+      if ($("xOAuthAuthorizeHost")) $("xOAuthAuthorizeHost").value = normalizedXOAuthAuthorizeHost(localStorage.getItem(xOAuthAuthorizeHostKey(targetCharacter)) || X_OAUTH_AUTHORIZE_HOST_DEFAULT);
       if ($("xOAuthClientId")) $("xOAuthClientId").value = settings.clientId;
       if ($("xOAuthClientSecret")) $("xOAuthClientSecret").value = settings.clientSecret;
       updateXOAuthRedirectUri();
@@ -9166,7 +9182,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     }
 
     function saveXOAuthAuthorizeHost(showMessage = false, character = xOAuthOperationCharacter()) {
-      if (!$("xOAuthAuthorizeHost")) return "twitter.com";
+      if (!$("xOAuthAuthorizeHost")) return X_OAUTH_AUTHORIZE_HOST_DEFAULT;
       const targetCharacter = xTokenCharacter(character);
       const host = normalizedXOAuthAuthorizeHost($("xOAuthAuthorizeHost").value);
       localStorage.setItem(xOAuthAuthorizeHostKey(targetCharacter), host);
@@ -14723,6 +14739,7 @@ Panel ${panelNumber} visible dialogue: ${split.speech || ""}`;
       installPullToRefreshGuard();
       loadCloudSyncKey();
       await restoreCloudStateFromServer({ overwrite: false });
+      migrateXOAuthAuthorizeHostDefault();
       loadApiKeys();
       refreshModelOptions();
       const startupStoredCharacter = storedActiveCharacter();

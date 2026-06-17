@@ -2063,7 +2063,7 @@ async function handleOAuthStart(req, res) {
   const state = randomToken(32);
   const codeVerifier = randomToken(64);
   const codeChallenge = base64Url(crypto.createHash("sha256").update(codeVerifier).digest());
-  const authorizeHost = payload.authorizeHost === "x.com" ? "x.com" : "twitter.com";
+  const authorizeHost = payload.authorizeHost === "twitter.com" ? "twitter.com" : "x.com";
   oauthSessions.set(state, {
     clientId,
     clientSecret,
