@@ -1992,7 +1992,13 @@ async function handlePostScheduleNow(req, res) {
 async function handleScheduleX(req, res) {
   const raw = await readBody(req);
   const payload = JSON.parse(raw || "{}");
-  const token = validateToken(payload.token);
+  const character = String(payload.character || "");
+  const stored = storedOAuthResult(character) || {};
+  const storedToken = stored.token || {};
+  const accessToken = String(storedToken.access_token || payload.token || "").trim();
+  const refreshToken = String(storedToken.refresh_token || payload.refreshToken || "").trim();
+  if (!accessToken && !refreshToken) throw new Error("Xトークンが保存されていません。Xトークン更新、またはXログインしてトークン取得を行ってください。");
+  const token = accessToken ? validateToken(accessToken) : "";
   const text = String(payload.text || "").trim();
   const scheduledAtMs = Date.parse(payload.scheduledAt || "");
   if (!text) throw new Error("投稿文が空です。");
@@ -2003,15 +2009,15 @@ async function handleScheduleX(req, res) {
   const job = {
     id: randomToken(12),
     reservationId: String(payload.reservationId || ""),
-    character: String(payload.character || ""),
+    character,
     title: String(payload.title || ""),
     scheduledAt: new Date(scheduledAtMs).toISOString(),
     status: "pending",
     createdAt: new Date().toISOString(),
     token,
-    refreshToken: String(payload.refreshToken || ""),
-    clientId: String(payload.clientId || ""),
-    clientSecret: String(payload.clientSecret || ""),
+    refreshToken,
+    clientId: String((stored && stored.clientId) || payload.clientId || ""),
+    clientSecret: String((stored && stored.clientSecret) || payload.clientSecret || ""),
     text,
     imageDataUrl: String(payload.imageDataUrl || ""),
     filename: String(payload.filename || ""),
@@ -2019,19 +2025,21 @@ async function handleScheduleX(req, res) {
     imageByteSize: payload.imageByteSize || null,
     compressed: !!payload.compressed
   };
-  persistOAuthResult({
-    ok: true,
-    ready: true,
-    character: job.character,
-    token: {
-      access_token: job.token,
-      refresh_token: job.refreshToken || "",
-      token_type: "bearer"
-    },
-    clientId: job.clientId,
-    clientSecret: job.clientSecret,
-    obtainedAt: new Date().toISOString()
-  });
+  if (!stored.token && job.token) {
+    persistOAuthResult({
+      ok: true,
+      ready: true,
+      character: job.character,
+      token: {
+        access_token: job.token,
+        refresh_token: job.refreshToken || "",
+        token_type: "bearer"
+      },
+      clientId: job.clientId,
+      clientSecret: job.clientSecret,
+      obtainedAt: new Date().toISOString()
+    });
+  }
 
   const queue = readScheduleQueue().filter((item) => {
     return !(job.reservationId && item.reservationId === job.reservationId && ["pending", "posting"].includes(item.status));

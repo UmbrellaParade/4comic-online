@@ -10472,7 +10472,6 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token,
-          refreshToken: getXRefreshTokenForCharacter(targetCharacter),
           clientId: xOAuthSettings.clientId,
           clientSecret: xOAuthSettings.clientSecret,
           text,
@@ -10850,7 +10849,6 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
             reservationId: item.id,
             scheduledAt,
             token,
-            refreshToken: getXRefreshTokenForCharacter(targetCharacter),
             clientId: xOAuthSettings.clientId,
             clientSecret: xOAuthSettings.clientSecret,
             text,
