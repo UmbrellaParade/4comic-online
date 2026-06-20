@@ -6546,6 +6546,103 @@ ${d.aiLabel ? "Disclosure note: AI-generated media may be labeled if required by
       return joinPostText(postBody(d), postHashtags(d));
     }
 
+    function postTextSourceForValidation(item) {
+      if (!item) return "";
+      return [
+        item.title,
+        item.subtitle,
+        item.theme,
+        item.aim,
+        item.p1,
+        item.p2,
+        item.p3,
+        item.p4,
+        item.manualIdeaSeed
+      ].map((text) => String(text || "").trim()).filter(Boolean).join("\n");
+    }
+
+    function normalizePostTextForValidation(text) {
+      return String(text || "")
+        .replace(/https?:\/\/\S+/g, " ")
+        .replace(/#[^\s#]+/g, " ")
+        .replace(/[【】「」『』（）()［］\[\]{}<>＜＞:：、。,.!?！？\n\r\t]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+    }
+
+    function postTextBigrams(text) {
+      const clean = normalizePostTextForValidation(text).replace(/\s+/g, "");
+      const grams = new Set();
+      for (let i = 0; i < clean.length - 1; i++) {
+        const gram = clean.slice(i, i + 2);
+        if (gram.trim().length === 2) grams.add(gram);
+      }
+      return grams;
+    }
+
+    function importantPostTerms(text) {
+      const stopWords = new Set([
+        "です", "ます", "ました", "する", "して", "いる", "ある", "こと", "もの",
+        "今回", "今日", "明日", "作品", "漫画", "投稿", "本文", "セリフ", "コマ"
+      ]);
+      const terms = normalizePostTextForValidation(text).match(/[0-9a-zA-Z一-龯ぁ-んァ-ヶー]{2,18}/g) || [];
+      const seen = new Set();
+      return terms.filter((term) => {
+        if (stopWords.has(term) || seen.has(term)) return false;
+        seen.add(term);
+        return true;
+      });
+    }
+
+    function postTextSimilarityWarning(item) {
+      const body = postBody(item);
+      const source = postTextSourceForValidation(item);
+      if (!body || normalizePostTextForValidation(body).length < 18) return "";
+      if (!source || normalizePostTextForValidation(source).length < 24) return "";
+      const sourceGrams = postTextBigrams(source);
+      const bodyGrams = postTextBigrams(body);
+      if (!sourceGrams.size || !bodyGrams.size) return "";
+      let shared = 0;
+      for (const gram of bodyGrams) {
+        if (sourceGrams.has(gram)) shared++;
+      }
+      const coverage = shared / Math.max(1, Math.min(sourceGrams.size, bodyGrams.size));
+      const normalizedBody = normalizePostTextForValidation(body);
+      const sharedTerms = importantPostTerms(source).filter((term) => normalizedBody.includes(term)).slice(0, 5);
+      if (coverage >= 0.045 || sharedTerms.length >= 2) return "";
+      return [
+        "投稿本文が漫画の内容と少し離れている可能性があります。",
+        `重なっている言葉が少なめです（近い言葉: ${sharedTerms.join(" / ") || "少なめ"}）。`,
+        "別日の投稿文や違うネタの本文を入れていないか確認してください。"
+      ].join("\n");
+    }
+
+    function validatePostTextBeforeSubmit(item, actionLabel = "投稿", setStatus = setXPostStatus) {
+      const target = item || {};
+      const missing = [];
+      if (target.includeManualPostText && !String(target.manualPostText || "").trim()) {
+        missing.push("投稿文（手動）");
+      }
+      if (target.includeAutoPostText && !String(target.autoPostText || "").trim()) {
+        missing.push("ネタ用投稿文");
+      }
+      if (missing.length) {
+        const message = `${missing.join("・")}を一緒に投稿する設定ですが、本文が空です。本文を入力するか、チェックを外してから${actionLabel}してください。`;
+        if (typeof setStatus === "function") setStatus(message, "err");
+        return false;
+      }
+      const warning = postTextSimilarityWarning(target);
+      if (!warning) return true;
+      const ok = window.confirm(`${warning}\n\nこのまま${actionLabel}しますか？`);
+      if (!ok) {
+        if (typeof setStatus === "function") setStatus(`${actionLabel}をキャンセルしました。投稿本文を確認してください。`, "err");
+        return false;
+      }
+      if (typeof setStatus === "function") setStatus("投稿本文の注意を確認したうえで続行します。");
+      return true;
+    }
+
     function caption(d) {
       const text = platformPostText(d);
       return `### Instagram
@@ -10364,14 +10461,15 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         setWpStatus("WordPress投稿する予約を選んでください。", "err");
         return;
       }
+      let targetItem = syncSelectedReservationScheduleFromMainFields(item) || item;
+      targetItem = persistSelectedReservationTextOverrides(targetItem) || targetItem;
+      if (!validatePostTextBeforeSubmit(targetItem, "WordPress投稿/予約", setWpStatus)) return;
       const button = $("postReservationToWp");
       const oldLabel = button.textContent;
       button.disabled = true;
       button.innerHTML = '<span class="spinner"></span>WP投稿中…';
       try {
         setWpStatus("WordPressへ漫画画像を投稿しています。");
-        let targetItem = syncSelectedReservationScheduleFromMainFields(item) || item;
-        targetItem = persistSelectedReservationTextOverrides(targetItem) || targetItem;
         await postReservationToWordPress(targetItem, null, null, false);
         clearGeneratedImageAfterReservation("WordPress投稿/予約が完了したので、漫画画像生成欄の表示をクリアしました。");
         clearIdeaSummaryFieldsAfterReservation(targetItem.character || val("character"));
@@ -10834,6 +10932,9 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         return;
       }
       item = syncSelectedReservationScheduleFromMainFields(item) || item;
+      const targetItem = persistSelectedReservationTextOverrides(item) || item;
+      if (!validatePostTextBeforeSubmit(targetItem, "X予約投稿", setXPostStatus)) return;
+      item = targetItem;
       const targetCharacter = xTokenCharacter(item.character);
       let token = "";
       loadXAccessToken(targetCharacter);
@@ -10853,7 +10954,6 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         if (!image) {
           throw new Error("この予約にキープ済み画像が紐づいていません。予約前ストックから画像を予約リストに追加してください。");
         }
-        const targetItem = persistSelectedReservationTextOverrides(item) || item;
         const text = buildXPostText(targetItem);
         const xOAuthSettings = getXOAuthSettingsForCharacter(targetCharacter);
         setXPostStatus("X予約投稿用に画像サイズを確認しています。");
@@ -10916,7 +11016,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         let message = `予約投稿をセットしました: ${new Date(json.job.scheduledAt).toLocaleString("ja-JP")}${localSaveMessage}${gitPushMessage} / 次の予約日: ${nextDate}`;
         if (wordpressShouldPostWithX(item.character)) {
           try {
-            const wpResult = await postReservationToWordPress(item, image, scheduledAt, true);
+            const wpResult = await postReservationToWordPress(targetItem, image, scheduledAt, true);
             message += ` / WordPressもセット: ${wpResult.post.link || `ID ${wpResult.post.id}`}`;
             if (wpResult.warnings && wpResult.warnings.length) {
               message += `（WP注意: ${wpResult.warnings.join(" / ")}）`;
@@ -10944,7 +11044,14 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         setXPostStatus("予約投稿前のリストからXに投稿するネタを選んでください。", "err");
         return;
       }
-      const item = selectedReservation();
+      let item = selectedReservation();
+      if (!item) {
+        setXPostStatus("選択した予約を読み込めませんでした。", "err");
+        return;
+      }
+      const targetItem = persistSelectedReservationTextOverrides(item) || item;
+      if (!validatePostTextBeforeSubmit(targetItem, "今すぐXに投稿", setXPostStatus)) return;
+      item = targetItem;
       const targetCharacter = xTokenCharacter(item && item.character);
       let token = "";
       loadXAccessToken(targetCharacter);
@@ -10952,10 +11059,6 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         token = await getUsableXAccessTokenForCharacter(targetCharacter, true);
       } catch (error) {
         setXPostStatus(`${targetCharacter}用のX User Access Tokenエラー: ${error.message}`, "err");
-        return;
-      }
-      if (!item) {
-        setXPostStatus("選択した予約を読み込めませんでした。", "err");
         return;
       }
       const button = $("markReservationDone");
@@ -10968,7 +11071,6 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         if (!image) {
           throw new Error("この予約にキープ済み画像が紐づいていません。予約前ストックから画像を予約リストに追加してください。");
         }
-        const targetItem = persistSelectedReservationTextOverrides(item) || item;
         const text = buildXPostText(targetItem);
         setXPostStatus("X投稿用に画像サイズを確認しています。");
         const xImage = await prepareImageForX(image);
