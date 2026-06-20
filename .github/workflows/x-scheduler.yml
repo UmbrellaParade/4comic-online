@@ -1,9 +1,8 @@
 name: X scheduled post runner
 
 on:
-  schedule:
-    # Check the encrypted schedule queue every 5 minutes.
-    - cron: "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
+  # VPS運用へ移行したため、自動スケジュール実行は停止。
+  # 必要な場合だけGitHub Actions画面から手動実行する。
   workflow_dispatch:
 
 concurrency:
