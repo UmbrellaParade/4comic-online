@@ -3057,10 +3057,12 @@
             "speechStyle": "べるぼの口調は、やさしい敬語を基本にする。一人称は「僕」。強く言い切らず、読者を責めず、煽らず、急かさない。「〜してみてもいいかもしれません」「一緒にやっていきましょう」「大丈夫です」「まずは少しだけでいいと思います」のように、柔らかく背中を押す。命令口調、「やるべき」「甘えるな」のようなきつい言い方は禁止。",
             "mangaTemplate": "現実寄りの制作ログ。AI、音楽、バンド、創作の迷いを、Umbrella Paradeの途中感と接続する。情報発信系の漫画でも、説教・煽り・断定で追い込む言い方はしない。優しい敬語で、読者が「少しだけやってみよう」と思える着地にする。",
             "fixed": [
-                  "Character: Belbo, the human-world temporary form behind Vel 13th.",
+                  "Character: Belbo, a real-world human creator and narrator. For manga images, draw Belbo as a separate human person, not as Vel 13th and not as Carla Manson.",
                   "Vocalist of Noise In My Soul.",
                   "Creator life, AI music, Suno, songwriting, imperfect but continuing.",
-                  "Realistic creator mood with a quiet Umbrella Parade atmosphere."
+                  "Realistic creator mood with a quiet Umbrella Parade atmosphere.",
+                  "Belbo must not have Vel 13th's horns, glowing eyes, neon wings, tail, demon grin, black hat with leopard band, umbrella-prop identity, or fantasy costume.",
+                  "Belbo must not borrow Carla Manson's black dress, long dark hair, feminine idol styling, rose-pink gothic glamour, or stage diva silhouette."
             ],
             "negative": "unreadable text, broken Japanese, generic business comic, too polished, no emotional conflict, crowded layout, tiny text",
             "sourceNotes": "",
@@ -6240,6 +6242,61 @@ ${lines.join("\n")}
 `;
     }
 
+    function characterIdentityLockLines(name, role = "character") {
+      if (name === "ヴェル13世") {
+        return [
+          `- ${role} Vel 13th / ヴェル13世: draw Vel himself as a 42-year-old male fantasy vocalist.`,
+          "  Required Vel features: black hat with leopard-pattern band, small horns, glowing eyes, neon wings, tail, bell-bottom pants, umbrella, dark rock/fantasy outfit.",
+          "  Never draw Vel as Belbo, a blond human narrator in a white shirt, a generic young boy, Carla, or an unrelated idol.",
+          "  If Vel appears with Belbo, Vel must keep the demon/fantasy silhouette and must not borrow Belbo's human creator outfit or soft narrator face."
+        ];
+      }
+      if (name === "カーラ・マンソン") {
+        return [
+          `- ${role} Carla Manson / カーラ・マンソン: draw Carla herself as an adult female singer with her own reference-image face and stage aura.`,
+          "  Required Carla feeling: mature woman, dark/glossy romantic styling, wine-red/rose-pink/deep-purple glamour, emotionally intense singer presence.",
+          "  Never draw Carla as Belbo, Vel, a generic girl, a background audience member, or a male character.",
+          "  If Carla appears with Belbo, Carla must not give Belbo her long dark hair, black dress, feminine face, or diva silhouette."
+        ];
+      }
+      if (name === "べるぼ") {
+        return [
+          `- ${role} Belbo / べるぼ: draw Belbo as the real-world human creator/narrator and vocalist, based only on Belbo's own reference images.`,
+          "  Belbo is visually separate from Vel 13th and Carla Manson in manga images, even though he is connected to the story setting.",
+          "  Never give Belbo Vel's horns, glowing eyes, neon wings, tail, demon grin, black leopard-band hat, umbrella identity, or fantasy costume.",
+          "  Never give Belbo Carla's long dark hair, black dress, feminine idol styling, rose-pink gothic glamour, or stage diva silhouette.",
+          "  If Belbo appears with Vel or Carla, keep Belbo as the human narrator in the foreground or narrator position, and keep Vel/Carla as separate story characters."
+        ];
+      }
+      return [`- ${role} ${name}: keep this character visually consistent with their own reference images. Do not blend them with other characters.`];
+    }
+
+    function characterSeparationBlock(d) {
+      const names = [d.character, ...((d.subCharRefs || []).map((ref) => ref.name))]
+        .filter(Boolean)
+        .filter((name, index, arr) => arr.indexOf(name) === index);
+      if (!names.length) return "";
+      const locks = names.flatMap((name, index) => characterIdentityLockLines(name, index === 0 ? "Main character" : "Selected sub-character"));
+      const hasBelbo = names.includes("べるぼ");
+      const hasVel = names.includes("ヴェル13世");
+      const hasCarla = names.includes("カーラ・マンソン");
+      const trioRule = hasBelbo && (hasVel || hasCarla)
+        ? [
+            "- Belbo + story character separation is critical: Belbo is the explainer/narrator; Vel and Carla are story characters. Do not merge their hair, face, outfit, age, gender, or props.",
+            "- Do not show Vel or Carla as tiny decorative background miniatures behind Belbo. If Vel or Carla appears, draw them large enough that the registered face, outfit, and silhouette are readable.",
+            "- If a panel cannot fit Belbo plus Vel/Carla clearly, simplify to one visible speaker and keep the other character out of that panel rather than drawing a blended person."
+          ].join("\n")
+        : "";
+      return `\nCharacter identity separation lock:
+${locks.join("\n")}
+- Each named character owns only their own reference images. Reference images are identity locks, not style inspiration for other characters.
+- Do not hybridize characters. No mixed face, mixed hairstyle, mixed outfit, mixed gender presentation, mixed props, or shared accessories unless the script explicitly says they are holding the same object.
+- Do not draw selected characters as tiny, vague background figures. If a named character appears, their face and signature outfit must be readable.
+- If the image model starts blending characters, reduce the number of visible characters in that panel instead of blending them.
+${trioRule}
+`;
+    }
+
     function imagePrompt(d) {
       const fixed = d.info.fixed.map((line) => `- ${line}`).join("\n");
       const reference = d.referenceImage
@@ -6266,6 +6323,7 @@ ${lines.join("\n")}
       const hasVelSubCharacter = !!(d.subCharRefs || []).some((ref) => ref.name === "ヴェル13世");
       const selectedSubNames = (d.subCharRefs || []).map((ref) => ref.name).join(" / ");
       const speakerGuide = speakerPresenceGuide(d);
+      const identitySeparation = characterSeparationBlock(d);
       const subCharBlock = d.subCharRefs && d.subCharRefs.length
         ? `\nSub-characters appearing in this manga:
 ${d.subCharRefs.map((ref) => {
@@ -6338,6 +6396,16 @@ ${speakerGuide}
 - Panel 3: wine red tones, emotional flip, jealousy, passionate intensity.
 - Panel 4: dark gold or pale pink tones, weakness, cuteness, comic aftertaste.
 - Keep the rainy neon world, but make Carla's palette glossy, romantic, dramatic, and different from Vel 13th.
+
+`
+        : d.character === "べるぼ"
+          ? `Panel color and emotion progression for Belbo. Make each panel visibly different:
+- Panel 1: calm cyan or blue-green tones, creator-log introduction, gentle explanation.
+- Panel 2: lime or soft green tones, practical discovery, making process.
+- Panel 3: warm amber or soft magenta accents, emotional realization, connection to the story.
+- Panel 4: cyan plus warm gold tones, friendly invitation, creator-log aftertaste.
+- Keep the rainy neon Umbrella Parade atmosphere, but do not use Vel 13th's demonic red-orange identity as Belbo's body design.
+- Belbo's accents are creator-log cyan/lime. Vel 13th's orange/red glow belongs only to Vel.
 
 `
         : `Panel color and emotion progression. Make each panel visibly different:
@@ -6425,12 +6493,18 @@ ${d.info.speechStyle || ""}
 Manga template:
 ${d.info.mangaTemplate || ""}
 
+${identitySeparation}
+
 Fixed visual and story rules (main character):
 ${fixed}
 ${imagePatternBlock}${subCharBlock}${reference}${angleBlock}${mangaReference}
 
 Avoid these visual failures:
 - Wrong character identity, generic replacement character, redesigned face, wrong age, wrong hairstyle, wrong outfit, or missing signature accessories.
+- Blending Belbo with Vel 13th or Carla Manson.
+- Drawing Belbo with Vel's horns, wings, glowing eyes, tail, umbrella silhouette, or demon face.
+- Drawing Vel 13th as a soft human narrator or Belbo-like foreground host.
+- Drawing Carla Manson's hair, dress, face, or singer silhouette onto Belbo.
 - Speech bubble attached to the wrong character.
 - Speech bubble for a character who is not visible in the same panel.
 - Two speakers combined into one bubble.
@@ -6467,7 +6541,7 @@ Layout rules:
 - ${subCharNames ? "Use the panel-by-panel bubble side as a default guide only. When a panel has two speaking characters, each bubble must go next to its own speaker — character identity overrides the panel's default side rule." : "Strictly follow the panel-by-panel speech bubble positions above."}
 - ${subCharNames ? "Do not alternate bubbles by panel number alone when two characters speak in the same panel; ensure each bubble is attached to the correct speaker's side." : "If the generated draft puts every bubble on one side, it is wrong. Alternate the bubble positions exactly."}
 - Strictly follow the character-specific panel color and emotion progression.
-${d.character === "カーラ・マンソン" ? "- For Carla Manson, use rose pink, deep purple, wine red, then dark gold or pale pink. Do not use Vel 13th's blue-orange progression." : "- For Vel 13th, use blue, purple, red, then orange."}
+${d.character === "カーラ・マンソン" ? "- For Carla Manson, use rose pink, deep purple, wine red, then dark gold or pale pink. Do not use Vel 13th's blue-orange progression." : d.character === "べるぼ" ? "- For Belbo, use creator-log cyan, lime, soft green, and warm gold accents. Do not use Vel 13th's demon red-orange glow on Belbo's body." : "- For Vel 13th, use blue, purple, red, then orange."}
 ${d.logo ? logoProfile.instruction : ""}
 Final copy: 「${logoProfile.finalCopy}」
 ${d.aiLabel ? "Disclosure note: AI-generated media may be labeled if required by the platform." : ""}`;
