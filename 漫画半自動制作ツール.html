@@ -3057,10 +3057,10 @@
             "speechStyle": "べるぼの口調は、やさしい敬語を基本にする。一人称は「僕」。強く言い切らず、読者を責めず、煽らず、急かさない。「〜してみてもいいかもしれません」「一緒にやっていきましょう」「大丈夫です」「まずは少しだけでいいと思います」のように、柔らかく背中を押す。命令口調、「やるべき」「甘えるな」のようなきつい言い方は禁止。",
             "mangaTemplate": "現実寄りの制作ログ。AI、音楽、バンド、創作の迷いを、Umbrella Paradeの途中感と接続する。情報発信系の漫画でも、説教・煽り・断定で追い込む言い方はしない。優しい敬語で、読者が「少しだけやってみよう」と思える着地にする。",
             "fixed": [
-                  "Character: Belbo, a real-world human creator and narrator. For manga images, draw Belbo as a separate human person, not as Vel 13th and not as Carla Manson.",
+                  "Character: Belbo, a real-world human creator and narrator. For manga images, draw Belbo as a separate chibi/SD human person, not as Vel 13th and not as Carla Manson.",
                   "Vocalist of Noise In My Soul.",
                   "Creator life, AI music, Suno, songwriting, imperfect but continuing.",
-                  "Realistic creator mood with a quiet Umbrella Parade atmosphere.",
+                  "Creator-log mood with a quiet Umbrella Parade atmosphere. Keep the body chibi/SD, not realistic or full-size anime.",
                   "Belbo must not have Vel 13th's horns, glowing eyes, neon wings, tail, demon grin, black hat with leopard band, umbrella-prop identity, or fantasy costume.",
                   "Belbo must not borrow Carla Manson's black dress, long dark hair, feminine idol styling, rose-pink gothic glamour, or stage diva silhouette."
             ],
@@ -6242,33 +6242,49 @@ ${lines.join("\n")}
 `;
     }
 
+    function chibiStyleLockBlock(d = {}) {
+      const names = [d.character, ...((d.subCharRefs || []).map((ref) => ref.name))]
+        .filter(Boolean)
+        .filter((name, index, arr) => arr.indexOf(name) === index);
+      const nameLine = names.length ? `Named characters in this request: ${names.join(" / ")}` : "";
+      return `\nChibi / SD style lock:
+${nameLine}
+- Draw every named character in chibi / super-deformed 4koma proportions, even when the character profile says adult, 38 years old, 42 years old, real-world human, vocalist, or singer.
+- Use a large head, small rounded body, short limbs, simplified hands, and cute 2.5 to 3-head-tall proportions.
+- Adult age and real-world identity are for character identity only. They must not turn the drawing into realistic, semi-realistic, tall, long-legged, or full-size anime proportions.
+- Keep the registered face, hair, outfit, colors, props, and aura, but translate them into chibi / SD form.
+- Do not make Belbo, Vel 13th, or Carla Manson look like normal-proportion anime characters, fashion models, realistic singers, or tall adults.
+- Avoid vague tiny background miniatures. Chibi characters should still be large enough that their registered face, outfit, and signature props are readable.
+`;
+    }
+
     function characterIdentityLockLines(name, role = "character") {
       if (name === "ヴェル13世") {
         return [
-          `- ${role} Vel 13th / ヴェル13世: draw Vel himself as a 42-year-old male fantasy vocalist.`,
-          "  Required Vel features: black hat with leopard-pattern band, small horns, glowing eyes, neon wings, tail, bell-bottom pants, umbrella, dark rock/fantasy outfit.",
+          `- ${role} Vel 13th / ヴェル13世: draw Vel himself as a chibi/SD 42-year-old male fantasy vocalist. His age is identity context, not realistic body proportion.`,
+          "  Required Vel features in chibi form: black hat with leopard-pattern band, small horns, glowing eyes, neon wings, tail, bell-bottom pants, umbrella, dark rock/fantasy outfit.",
           "  Never draw Vel as Belbo, a blond human narrator in a white shirt, a generic young boy, Carla, or an unrelated idol.",
           "  If Vel appears with Belbo, Vel must keep the demon/fantasy silhouette and must not borrow Belbo's human creator outfit or soft narrator face."
         ];
       }
       if (name === "カーラ・マンソン") {
         return [
-          `- ${role} Carla Manson / カーラ・マンソン: draw Carla herself as an adult female singer with her own reference-image face and stage aura.`,
-          "  Required Carla feeling: mature woman, dark/glossy romantic styling, wine-red/rose-pink/deep-purple glamour, emotionally intense singer presence.",
+          `- ${role} Carla Manson / カーラ・マンソン: draw Carla herself as a chibi/SD adult female singer with her own reference-image face and stage aura. Adult means aura and styling, not realistic body proportion.`,
+          "  Required Carla feeling in chibi form: mature woman aura, dark/glossy romantic styling, wine-red/rose-pink/deep-purple glamour, emotionally intense singer presence.",
           "  Never draw Carla as Belbo, Vel, a generic girl, a background audience member, or a male character.",
           "  If Carla appears with Belbo, Carla must not give Belbo her long dark hair, black dress, feminine face, or diva silhouette."
         ];
       }
       if (name === "べるぼ") {
         return [
-          `- ${role} Belbo / べるぼ: draw Belbo as the real-world human creator/narrator and vocalist, based only on Belbo's own reference images.`,
+          `- ${role} Belbo / べるぼ: draw Belbo as a chibi/SD real-world human creator/narrator and vocalist, based only on Belbo's own reference images.`,
           "  Belbo is visually separate from Vel 13th and Carla Manson in manga images, even though he is connected to the story setting.",
           "  Never give Belbo Vel's horns, glowing eyes, neon wings, tail, demon grin, black leopard-band hat, umbrella identity, or fantasy costume.",
           "  Never give Belbo Carla's long dark hair, black dress, feminine idol styling, rose-pink gothic glamour, or stage diva silhouette.",
-          "  If Belbo appears with Vel or Carla, keep Belbo as the human narrator in the foreground or narrator position, and keep Vel/Carla as separate story characters."
+          "  If Belbo appears with Vel or Carla, keep Belbo as the chibi human narrator in the foreground or narrator position, and keep Vel/Carla as separate chibi story characters."
         ];
       }
-      return [`- ${role} ${name}: keep this character visually consistent with their own reference images. Do not blend them with other characters.`];
+      return [`- ${role} ${name}: keep this character visually consistent with their own reference images in chibi/SD proportions. Do not blend them with other characters.`];
     }
 
     function characterSeparationBlock(d) {
@@ -6323,6 +6339,7 @@ ${trioRule}
       const hasVelSubCharacter = !!(d.subCharRefs || []).some((ref) => ref.name === "ヴェル13世");
       const selectedSubNames = (d.subCharRefs || []).map((ref) => ref.name).join(" / ");
       const speakerGuide = speakerPresenceGuide(d);
+      const chibiStyleLock = chibiStyleLockBlock(d);
       const identitySeparation = characterSeparationBlock(d);
       const subCharBlock = d.subCharRefs && d.subCharRefs.length
         ? `\nSub-characters appearing in this manga:
@@ -6351,9 +6368,10 @@ Sub-character identity lock:
 - If the exact registered character cannot fit into a panel, simplify the panel composition rather than drawing a different person.
 - Do not replace a selected sub-character with a generic woman, man, idol, gothic character, passerby, or redesigned version.
 - Keep each selected sub-character's face, hairstyle, outfit silhouette, colors, accessories, age, body shape, and mood consistent with their own reference image set.
+- Keep every selected sub-character in chibi/SD proportions. Do not turn the selected character into a realistic adult or full-size anime body.
 - If Carla Manson / カーラ・マンソン is selected, draw Carla Manson herself. She must not become a different female character.
-- If Vel 13th / ヴェル13世 is selected, draw Vel 13th himself: 42-year-old man, black hat with leopard-pattern band, small horns, glowing eyes, neon wings, tail, bell-bottom pants, and umbrella. He must not become a generic boy, girl, idol, demon, or unrelated gothic person.
-- If Vel 13th / ヴェル13世 is selected, every black-clothed man, umbrella man, demon-like male, or male figure in the manga must be Vel 13th and must include his signature hat, small horns, glowing eyes, neon wings, tail, bell-bottom pants, and umbrella.
+- If Vel 13th / ヴェル13世 is selected, draw Vel 13th himself in chibi/SD form: 42-year-old identity, black hat with leopard-pattern band, small horns, glowing eyes, neon wings, tail, bell-bottom pants, and umbrella. He must not become a generic boy, girl, idol, demon, or unrelated gothic person.
+- If Vel 13th / ヴェル13世 is selected, every black-clothed man, umbrella man, demon-like male, or male figure in the manga must be chibi Vel 13th and must include his signature hat, small horns, glowing eyes, neon wings, tail, bell-bottom pants, and umbrella.
 - Do not draw an unnamed "person waiting for Carla" or generic dark man when Vel 13th is selected. Use Vel 13th himself.
 
 Sub-character staging rules:
@@ -6481,7 +6499,7 @@ On-image text whitelist:
 - Do not write words such as 「テーマ」, 「Theme」, 「狙い」, 「Aim」, 「メモ」, or 「コンセプト」 anywhere in the artwork.
 
 ${carlaColorBlock}`;
-      return `${chatGptReferenceBlock}${textLegibilityBlock}${panelLayoutBlock}Create a vertical 9:16 four-panel manga for Umbrella Parade.
+      return `${chatGptReferenceBlock}${textLegibilityBlock}${panelLayoutBlock}Create a vertical 9:16 chibi/SD four-panel manga for Umbrella Parade.
 
 Main character preset from Obsidian:
 ${d.info.profileSummary || ""}
@@ -6493,6 +6511,8 @@ ${d.info.speechStyle || ""}
 Manga template:
 ${d.info.mangaTemplate || ""}
 
+${chibiStyleLock}
+
 ${identitySeparation}
 
 Fixed visual and story rules (main character):
@@ -6500,6 +6520,7 @@ ${fixed}
 ${imagePatternBlock}${subCharBlock}${reference}${angleBlock}${mangaReference}
 
 Avoid these visual failures:
+- Losing the chibi/SD 4koma look, realistic adult body proportions, tall full-size anime bodies, long legs, fashion-model proportions, or semi-realistic anatomy.
 - Wrong character identity, generic replacement character, redesigned face, wrong age, wrong hairstyle, wrong outfit, or missing signature accessories.
 - Blending Belbo with Vel 13th or Carla Manson.
 - Drawing Belbo with Vel's horns, wings, glowing eyes, tail, umbrella silhouette, or demon face.
