@@ -1568,6 +1568,25 @@
             </div>
           </div>
 
+          <!-- 作品資料・小物参考画像 -->
+          <div class="manga-ref-section">
+            <div class="manga-ref-head">
+              <span>作品資料・小物参照画像（本の表紙など）</span>
+              <div class="actions">
+                <button class="secondary" type="button" onclick="openGallery('assetRefImage')">🖼 ギャラリー</button>
+                <button id="copyAssetRefPath" class="secondary" type="button">パスコピー</button>
+                <button id="clearAssetRefImage" class="secondary" type="button">登録削除</button>
+              </div>
+            </div>
+            <div class="preset-grid">
+              <select id="assetRefImage"></select>
+              <div class="preview-frame" id="assetRefPreview">
+                <div class="preview-empty">作品資料なし</div>
+              </div>
+            </div>
+            <p class="hint">本の表紙、Kindle画面、ロゴ、小物などを登録します。ネタ内に本・表紙・Kindle・Amazonページ・スマホ画面が出る時に参照画像として使います。</p>
+          </div>
+
           <div class="subchar-section">
             <div class="subchar-title">登場キャラクター（複数選択可）</div>
             <div id="subCharChecks" class="check-row"></div>
@@ -1612,6 +1631,7 @@
               <option value="人物画像">人物画像</option>
               <option value="漫画画像">漫画画像</option>
               <option value="漫画タイトルサムネ">タイトルサムネ</option>
+              <option value="作品資料・小物">作品資料・小物</option>
               <option value="読み込み画像">その他</option>
             </select>
             <button id="recategorizeImages" class="secondary" type="button">読み込み画像→変更</button>
@@ -4498,20 +4518,27 @@
 
     function selectImportedRuntimeImage(image, character, category) {
       if (!image || !image.path) return;
-      const isManga = MANGA_CATEGORIES.includes(category || image.category || "") || imageLooksLikeMangaOutput(image);
-      if (isManga) {
+      const selectedCategory = category || image.category || "";
+      const isAsset = ASSET_CATEGORIES.includes(selectedCategory) || imageLooksLikeAssetReference(image);
+      const isManga = MANGA_CATEGORIES.includes(selectedCategory) || imageLooksLikeMangaOutput(image);
+      if (isAsset) {
+        $("assetRefImage").value = image.path;
+      } else if (isManga) {
         $("mangaRefImage").value = image.path;
       } else {
         $("referenceImage").value = image.path;
       }
       updateProfilePanel();
-      if (isManga) {
+      if (isAsset) {
+        $("assetRefImage").value = image.path;
+      } else if (isManga) {
         $("mangaRefImage").value = image.path;
       } else {
         $("referenceImage").value = image.path;
       }
       updatePreview();
       updateMangaRefPreview();
+      updateAssetRefPreview();
       updateAnglePreviews();
       saveCharacterImageSet(false);
       render();
@@ -4888,11 +4915,18 @@
     }
 
     const MANGA_CATEGORIES = ["投稿済み", "未投稿", "予約済み", "漫画タイトルサムネ"];
+    const ASSET_CATEGORIES = ["作品資料・小物", "作品資料", "小物", "本の表紙", "表紙画像"];
 
     function imageLooksLikeMangaOutput(img) {
       const text = `${img?.category || ""} ${img?.name || ""} ${img?.path || ""}`;
       return MANGA_CATEGORIES.includes(img?.category || "")
         || /投稿済み|予約済み|未投稿|漫画タイトルサムネ|4コマ|四コマ|漫画\d*|情緒ログ|まだ[、,]?息してる|comic|manga|thumbnail|thumb|サムネ/i.test(text);
+    }
+
+    function imageLooksLikeAssetReference(img) {
+      const text = `${img?.category || ""} ${img?.name || ""} ${img?.path || ""}`;
+      return ASSET_CATEGORIES.includes(img?.category || "")
+        || /作品資料|小物|本の表紙|表紙|Kindle|Amazon|book|cover|novel|小説|asset|prop/i.test(text);
     }
 
     function preferredCharacterReferenceImage(character) {
@@ -5031,6 +5065,10 @@
       const mangaImages = usableImages.filter((img) => MANGA_CATEGORIES.includes(img.category) || img.runtime);
       populateImageSelect($("mangaRefImage"), mangaImages, $("mangaRefImage").value, "漫画参考画像を選択");
 
+      const assetImages = usableImages.filter((img) => imageLooksLikeAssetReference(img));
+      const assetSelectImages = assetImages.length ? assetImages : usableImages;
+      populateImageSelect($("assetRefImage"), assetSelectImages, $("assetRefImage").value, "作品資料・小物画像を選択");
+
       const unavailableCount = Math.max(0, allImages.length - usableImages.length);
       $("presetSource").textContent = `${character}：資料 ${info.notePaths ? info.notePaths.length : 0}件 / オンラインで使える画像 ${usableImages.length}件 / 漫画画像 ${mangaImages.length}件${unavailableCount ? ` / PC内のみ ${unavailableCount}件` : ""}`;
 
@@ -5044,6 +5082,7 @@
       loadCharacterImageSet(false);
       updatePreview();
       updateMangaRefPreview();
+      updateAssetRefPreview();
       updateAnglePreviews();
       updateImageSetStatus();
       renderImagePatternSelect();
@@ -5053,7 +5092,7 @@
 
 
     // ── Character image set persistence ──────────────────────────
-    const IMAGE_SET_IDS = ["referenceImage", "mangaRefImage", "angleFront", "angleRight", "angleLeft", "angleBack"];
+    const IMAGE_SET_IDS = ["referenceImage", "mangaRefImage", "assetRefImage", "angleFront", "angleRight", "angleLeft", "angleBack"];
 
     function imageSetKey(character = val("character")) {
       return `umbrellaMangaImageSet_${character || "ヴェル13世"}`;
@@ -5153,6 +5192,7 @@
       });
       updatePreview();
       updateMangaRefPreview();
+      updateAssetRefPreview();
       updateAnglePreviews();
       return true;
     }
@@ -5386,6 +5426,7 @@
     function refreshImageRegistrationPreview(selectId) {
       if (selectId === "referenceImage") updatePreview();
       if (selectId === "mangaRefImage") updateMangaRefPreview();
+      if (selectId === "assetRefImage") updateAssetRefPreview();
       const angle = ANGLE_MAP.find((item) => item.id === selectId);
       if (angle) updateAnglePreview(angle.id, angle.previewId);
     }
@@ -5435,6 +5476,7 @@
       saveCharacterImageSet(false);
       updatePreview();
       updateMangaRefPreview();
+      updateAssetRefPreview();
       updateAnglePreviews();
       render();
       $("statusText").textContent = "すべての画像登録を解除しました。元画像ファイルは残っています。";
@@ -5574,6 +5616,28 @@
       frame.appendChild(img);
     }
 
+    function updateAssetRefPreview() {
+      const frame = $("assetRefPreview");
+      const path = val("assetRefImage");
+      if (!frame) return;
+      if (!path) {
+        frame.innerHTML = '<div class="preview-empty">作品資料なし</div>';
+        return;
+      }
+      if (!imageUsableInHostedTool(path)) {
+        frame.innerHTML = hostedImageUnavailableHtml("作品資料画像");
+        return;
+      }
+      const img = document.createElement("img");
+      img.alt = "作品資料・小物参照画像";
+      img.src = imageSrcForPath(path);
+      img.onerror = () => {
+        frame.innerHTML = '<div class="preview-empty">画像を表示できませんでした</div>';
+      };
+      frame.innerHTML = "";
+      frame.appendChild(img);
+    }
+
     // ── Angle previews ──────────────────────────────────────────
     const ANGLE_MAP = [
       { id: "angleFront", previewId: "previewFront", label: "フロント" },
@@ -5614,12 +5678,16 @@
       let images = referenceUsableImages(getCharacterImages(character), character);
       if (selectId === "mangaRefImage") {
         images = images.filter((img) => MANGA_CATEGORIES.includes(img.category) || img.runtime);
+      } else if (selectId === "assetRefImage") {
+        const assetImages = images.filter((img) => imageLooksLikeAssetReference(img));
+        images = assetImages.length ? assetImages : images;
       }
       const currentVal = $(selectId).value;
 
       const titleMap = {
         referenceImage: "キャラ参考画像を選ぶ",
         mangaRefImage:  "漫画参考画像を選ぶ",
+        assetRefImage: "作品資料・小物参照画像を選ぶ",
         angleFront: "フロント（正面）画像を選ぶ",
         angleRight: "右サイド画像を選ぶ",
         angleLeft:  "左サイド画像を選ぶ",
@@ -5668,7 +5736,7 @@
       });
 
       if (images.length === 0) {
-        body.innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center;">オンラインで使える画像がありません。VPSへキャラ画像アップロード、またはVPSからキャラ画像登録で参考画像を追加してください。</div>';
+        body.innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center;">オンラインで使える画像がありません。VPSへ画像アップロード、またはVPSから画像登録で参考画像を追加してください。</div>';
       }
 
       $("imageGalleryModal").classList.add("open");
@@ -5985,6 +6053,10 @@
       const mangaRef = mangaRefImage
         ? getCharacterImages(character).find((img) => img.path === mangaRefImage)
         : null;
+      const assetRefImage = val("assetRefImage");
+      const assetRef = assetRefImage
+        ? getCharacterImages(character).find((img) => img.path === assetRefImage)
+        : null;
       const subCharacters = Array.from(
         document.querySelectorAll(".subchar-check:checked")
       ).map((el) => el.value);
@@ -6044,6 +6116,9 @@
         mangaRefImage: mangaRef ? outputImagePath(mangaRef) : mangaRefImage,
         mangaRefImageRaw: mangaRefImage,
         mangaRefImageName: mangaRef ? mangaRef.name : "",
+        assetRefImage: assetRef ? outputImagePath(assetRef) : assetRefImage,
+        assetRefImageRaw: assetRefImage,
+        assetRefImageName: assetRef ? assetRef.name : "",
         angleFront: val("angleFront"),
         angleRight: val("angleRight"),
         angleLeft:  val("angleLeft"),
@@ -6065,6 +6140,7 @@
       const notePaths = (d.info.notePaths || []).map((path) => `- ${path}`).join("\n") || "-";
       const reference = d.referenceImage ? `${d.referenceImageName || "参考画像"}\n${d.referenceImage}` : "-";
       const mangaReference = d.mangaRefImage ? `${d.mangaRefImageName || "漫画参考"}\n${d.mangaRefImage}` : "-";
+      const assetReference = d.assetRefImage ? `${d.assetRefImageName || "作品資料・小物参照"}\n${d.assetRefImage}` : "-";
       const subCharSection = d.subCharRefs && d.subCharRefs.length
         ? `\n## サブキャラクター\n\n${d.subCharRefs.map((ref) => `- ${ref.name}${ref.imageName ? `（参考画像: ${ref.imageName}）` : ""}`).join("\n")}\n`
         : "";
@@ -6156,6 +6232,10 @@ ${[
 ## 漫画参考画像
 
 ${mangaReference}
+
+## 作品資料・小物参照画像
+
+${assetReference}
 
 ## 画像生成プロンプト
 
@@ -6329,6 +6409,9 @@ ${trioRule}
         : "";
       const mangaReference = d.mangaRefImage
         ? `\nManga style reference image: ${d.mangaRefImageName}\nLocal path: ${d.mangaRefImage}\n`
+        : "";
+      const assetReference = d.assetRefImage
+        ? `\nProduction asset / prop reference image: ${d.assetRefImageName}\nLocal path: ${d.assetRefImage}\nUse this image as the exact design reference whenever a book, novel cover, Kindle cover, Amazon page, smartphone screen, promotional book image, logo, or important prop appears in the manga. Do not invent a different book cover design. If the cover appears small, keep the overall colors, title layout, and main visual recognizable.\n`
         : "";
       const imagePatternBlock = d.imagePatternName
         ? `\nImage pattern / outfit variant for this episode: ${d.imagePatternName}\nUse the selected reference images as this exact costume, hairstyle, expression, and appearance pattern. Do not mix it with other saved image patterns.\n`
@@ -6517,10 +6600,11 @@ ${identitySeparation}
 
 Fixed visual and story rules (main character):
 ${fixed}
-${imagePatternBlock}${subCharBlock}${reference}${angleBlock}${mangaReference}
+${imagePatternBlock}${subCharBlock}${reference}${angleBlock}${mangaReference}${assetReference}
 
 Avoid these visual failures:
 - Losing the chibi/SD 4koma look, realistic adult body proportions, tall full-size anime bodies, long legs, fashion-model proportions, or semi-realistic anatomy.
+- Inventing a different book cover, Kindle cover, Amazon screen, logo, or important prop when a production asset reference image is selected.
 - Wrong character identity, generic replacement character, redesigned face, wrong age, wrong hairstyle, wrong outfit, or missing signature accessories.
 - Blending Belbo with Vel 13th or Carla Manson.
 - Drawing Belbo with Vel's horns, wings, glowing eyes, tail, umbrella silhouette, or demon face.
@@ -6581,6 +6665,7 @@ ${d.aiLabel ? "Disclosure note: AI-generated media may be labeled if required by
         subCharacters: d.subCharacters || [],
         referenceImageRaw: d.referenceImageRaw || "",
         mangaRefImageRaw: d.mangaRefImageRaw || "",
+        assetRefImageRaw: d.assetRefImageRaw || "",
         imagePatternName: d.imagePatternName || ""
       });
     }
@@ -11812,6 +11897,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         d.angleLeft,
         d.angleBack,
         d.mangaRefImageRaw,
+        d.assetRefImageRaw,
         ...(Array.isArray(d.subCharRefs)
           ? d.subCharRefs.flatMap((ref) => [
               ref.imageRaw,
@@ -11848,7 +11934,8 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         [d.angleRight, referenceImageLabel(character, "right-reference")],
         [d.angleLeft, referenceImageLabel(character, "left-reference")],
         [d.angleBack, referenceImageLabel(character, "back-reference")],
-        [d.mangaRefImageRaw, "manga-style-reference"]
+        [d.mangaRefImageRaw, "manga-style-reference"],
+        [d.assetRefImageRaw, "production-asset-prop-reference"]
       ];
       for (const [value, label] of directMatches) {
         if (sameReferencePath(value, path)) return label;
@@ -13351,8 +13438,11 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     });
     $("mangaRefImage").addEventListener("change", () => { updateMangaRefPreview(); saveCharacterImageSet(false); render(); });
     $("copyMangaRefPath").addEventListener("click", () => copyText(selectedOutputImagePath("mangaRefImage") || ""));
+    $("assetRefImage").addEventListener("change", () => { updateAssetRefPreview(); saveCharacterImageSet(false); render(); });
+    $("copyAssetRefPath").addEventListener("click", () => copyText(selectedOutputImagePath("assetRefImage") || ""));
     $("clearReferenceImage").addEventListener("click", () => deleteImageRegistration("referenceImage"));
     $("clearMangaRefImage").addEventListener("click", () => deleteImageRegistration("mangaRefImage"));
+    $("clearAssetRefImage").addEventListener("click", () => deleteImageRegistration("assetRefImage"));
     $("clearAngleFront").addEventListener("click", () => deleteImageRegistration("angleFront"));
     $("clearAngleRight").addEventListener("click", () => deleteImageRegistration("angleRight"));
     $("clearAngleLeft").addEventListener("click", () => deleteImageRegistration("angleLeft"));
