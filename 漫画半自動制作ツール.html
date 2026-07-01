@@ -6926,6 +6926,10 @@ ${text}`;
 
     // ── Stock and Obsidian helpers ───────────────────────────────
     const STOCK_KEY = "umbrellaMangaIdeaStock";
+    const STOCK_LOCAL_CACHE_TARGET_BYTES = 1800000;
+    const STOCK_LOCAL_CACHE_MIN_ITEMS = 25;
+    const STOCK_LOCAL_CACHE_MAX_ITEMS = 300;
+    const STOCK_HEAVY_FIELDS = ["card", "prompt", "caption"];
     const SEED_IDEA_STOCK_IMPORTED_KEY = "umbrellaMangaSeedIdeaStockImportedIds";
     const ACTIVE_MANGA_IDEA_KEY = "umbrellaMangaActiveIdeaId";
     const ACTIVE_IDEA_DRAFT_KEY = "umbrellaMangaActiveIdeaDraft";
@@ -7010,6 +7014,7 @@ ${text}`;
     let activeXOAuthSettingsCharacter = "";
     let activeWordPressSettingsCharacter = "";
     let latestXScheduleJobs = [];
+    let fullIdeaStockCache = null;
 
     function cloudSyncCharacters() {
       return Object.keys(characterData);
@@ -7055,7 +7060,126 @@ ${text}`;
       ].filter((key) => key && serverStateAllowedKey(key));
     }
 
+    function normalizeListValue(value) {
+      return Array.isArray(value) ? value.filter(Boolean) : [];
+    }
+
+    function jsonByteSize(value) {
+      const text = JSON.stringify(value ?? null);
+      if (window.TextEncoder) return new TextEncoder().encode(text).length;
+      return unescape(encodeURIComponent(text)).length;
+    }
+
+    function trimLocalCacheText(value, maxLength) {
+      const text = String(value || "");
+      return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+    }
+
+    function compactIdeaStockItemForLocal(item) {
+      const compact = {};
+      Object.entries(item || {}).forEach(([key, value]) => {
+        if (STOCK_HEAVY_FIELDS.includes(key)) return;
+        if (/dataUrl|base64|imageData/i.test(key)) return;
+        compact[key] = value;
+      });
+      compact.manualIdeaSeed = trimLocalCacheText(compact.manualIdeaSeed, 1200);
+      compact.pastText = trimLocalCacheText(compact.pastText, 1200);
+      ["p1", "p2", "p3", "p4"].forEach((key) => {
+        compact[key] = trimLocalCacheText(compact[key], 1800);
+      });
+      compact.aim = trimLocalCacheText(compact.aim, 800);
+      compact.theme = trimLocalCacheText(compact.theme, 500);
+      return compact;
+    }
+
+    function compactIdeaStockForLocal(list) {
+      let compact = normalizeListValue(list)
+        .slice(0, STOCK_LOCAL_CACHE_MAX_ITEMS)
+        .map(compactIdeaStockItemForLocal);
+
+      while (compact.length > STOCK_LOCAL_CACHE_MIN_ITEMS && jsonByteSize(compact) > STOCK_LOCAL_CACHE_TARGET_BYTES) {
+        compact = compact.slice(0, Math.max(STOCK_LOCAL_CACHE_MIN_ITEMS, Math.floor(compact.length * 0.75)));
+      }
+      return compact;
+    }
+
+    function mergeIdeaStockLists(preferredList, fallbackList) {
+      const fallbackById = new Map();
+      normalizeListValue(fallbackList).forEach((item) => {
+        if (item && item.id) fallbackById.set(item.id, item);
+      });
+
+      const usedIds = new Set();
+      const merged = [];
+      normalizeListValue(preferredList).forEach((item) => {
+        const fallback = item && item.id ? fallbackById.get(item.id) : null;
+        const next = { ...(fallback || {}), ...(item || {}) };
+        STOCK_HEAVY_FIELDS.forEach((key) => {
+          if ((next[key] === undefined || next[key] === "") && fallback && fallback[key]) next[key] = fallback[key];
+        });
+        if (next.id) usedIds.add(next.id);
+        merged.push(next);
+      });
+
+      normalizeListValue(fallbackList).forEach((item) => {
+        if (item && item.id && usedIds.has(item.id)) return;
+        merged.push(item);
+      });
+      return merged.filter(Boolean).slice(0, 500);
+    }
+
+    function mergeIdeaStockItemDetails(preferredList, fallbackList) {
+      const fallbackById = new Map();
+      normalizeListValue(fallbackList).forEach((item) => {
+        if (item && item.id) fallbackById.set(item.id, item);
+      });
+
+      return normalizeListValue(preferredList).map((item) => {
+        const fallback = item && item.id ? fallbackById.get(item.id) : null;
+        const next = { ...(fallback || {}), ...(item || {}) };
+        STOCK_HEAVY_FIELDS.forEach((key) => {
+          if ((next[key] === undefined || next[key] === "") && fallback && fallback[key]) next[key] = fallback[key];
+        });
+        return next;
+      }).filter(Boolean).slice(0, 500);
+    }
+
+    function writeLocalStorageJson(key, value) {
+      localStorage.setItem(key, JSON.stringify(value));
+    }
+
+    function persistIdeaStockLocal(list) {
+      const compact = compactIdeaStockForLocal(list);
+      try {
+        writeLocalStorageJson(STOCK_KEY, compact);
+      } catch (error) {
+        if (!/quota|exceeded|storage/i.test(String(error && (error.name || error.message) || error))) throw error;
+        let trimmed = compact;
+        while (trimmed.length > STOCK_LOCAL_CACHE_MIN_ITEMS) {
+          trimmed = trimmed.slice(0, Math.max(STOCK_LOCAL_CACHE_MIN_ITEMS, Math.floor(trimmed.length * 0.6)));
+          try {
+            writeLocalStorageJson(STOCK_KEY, trimmed);
+            console.warn("ネタ台本ストックのブラウザ保存を軽量化しました。", { count: trimmed.length });
+            return;
+          } catch {
+            // keep trimming until the browser accepts the cache
+          }
+        }
+        localStorage.removeItem(STOCK_KEY);
+        writeLocalStorageJson(STOCK_KEY, trimmed);
+      }
+    }
+
+    function rememberFullIdeaStock(list) {
+      fullIdeaStockCache = normalizeListValue(list);
+      persistIdeaStockLocal(fullIdeaStockCache);
+      return fullIdeaStockCache;
+    }
+
     function localStorageValueForCloud(key) {
+      if (key === STOCK_KEY && Array.isArray(fullIdeaStockCache)) {
+        return { exists: true, value: fullIdeaStockCache };
+      }
       const raw = localStorage.getItem(key);
       if (raw === null) return { exists: false, value: null };
       const trimmed = raw.trim();
@@ -7071,6 +7195,22 @@ ${text}`;
 
     function storeCloudValue(key, value, overwrite = false) {
       if (!serverStateAllowedKey(key) || value === undefined || value === null) return false;
+      if (key === STOCK_KEY) {
+        const incoming = normalizeListValue(value);
+        const existingRaw = localStorage.getItem(key);
+        if (existingRaw !== null && !overwrite) {
+          let existing = [];
+          try {
+            existing = JSON.parse(existingRaw);
+          } catch {
+            existing = [];
+          }
+          rememberFullIdeaStock(mergeIdeaStockLists(existing, incoming));
+          return true;
+        }
+        rememberFullIdeaStock(incoming);
+        return true;
+      }
       if (!overwrite) {
         const existing = localStorage.getItem(key);
         if (existing !== null) {
@@ -7321,18 +7461,34 @@ ${text}`;
     }
 
     function readList(key) {
+      if (key === STOCK_KEY && Array.isArray(fullIdeaStockCache)) {
+        return fullIdeaStockCache.filter(Boolean);
+      }
       try {
         const parsed = JSON.parse(localStorage.getItem(key) || "[]");
-        return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+        const list = Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+        if (key === STOCK_KEY) {
+          fullIdeaStockCache = list;
+          persistIdeaStockLocal(list);
+        }
+        return list;
       } catch {
         localStorage.removeItem(key);
+        if (key === STOCK_KEY) fullIdeaStockCache = [];
         return [];
       }
     }
 
     function writeList(key, list) {
-      localStorage.setItem(key, JSON.stringify(Array.isArray(list) ? list : []));
-      if (serverStateAllowedKey(key)) syncServerClientState(key, Array.isArray(list) ? list : []);
+      const normalized = normalizeListValue(list);
+      if (key === STOCK_KEY) {
+        const merged = mergeIdeaStockItemDetails(normalized, fullIdeaStockCache || []);
+        rememberFullIdeaStock(merged);
+        if (serverStateAllowedKey(key)) syncServerClientState(key, merged);
+        return;
+      }
+      localStorage.setItem(key, JSON.stringify(normalized));
+      if (serverStateAllowedKey(key)) syncServerClientState(key, normalized);
     }
 
     const TOOL_VIEW_KEY = "umbrellaMangaToolView";
