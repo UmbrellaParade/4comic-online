@@ -6026,6 +6026,31 @@
       return nextDate;
     }
 
+    function captureScheduleInputState(character = val("character") || activeScheduleCharacter || "ヴェル13世") {
+      const targetCharacter = character || "ヴェル13世";
+      return {
+        character: targetCharacter,
+        activeScheduleCharacter,
+        scheduled: $("scheduled") ? $("scheduled").value : "",
+        scheduledTime: $("scheduledTime") ? $("scheduledTime").value : "",
+        calendarMonth: $("calendarMonth") ? $("calendarMonth").value : "",
+        savedDate: savedScheduledDateForCharacter(targetCharacter),
+        savedTime: savedScheduledTimeForCharacter(targetCharacter)
+      };
+    }
+
+    function restoreScheduleInputState(snapshot) {
+      if (!snapshot) return;
+      activeScheduleCharacter = snapshot.activeScheduleCharacter || snapshot.character || activeScheduleCharacter;
+      if ($("scheduled")) $("scheduled").value = snapshot.scheduled || "";
+      if ($("scheduledTime")) $("scheduledTime").value = snapshot.scheduledTime || "";
+      if ($("calendarMonth")) {
+        $("calendarMonth").value = snapshot.calendarMonth || (snapshot.scheduled ? snapshot.scheduled.slice(0, 7) : $("calendarMonth").value);
+      }
+      saveScheduledDateForCharacter(snapshot.character, snapshot.savedDate || snapshot.scheduled || "");
+      saveScheduledTimeForCharacter(snapshot.character, snapshot.savedTime || snapshot.scheduledTime || "");
+    }
+
 
     function mangaOutputImageFolder(character, info) {
       const map = {
@@ -9186,7 +9211,6 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       if (status === "done") target.postedAt = new Date().toISOString();
       writeList(RESERVATION_KEY, list);
       renderReservations();
-      const nextDate = status === "done" ? advanceNextScheduledDateAfter(target) : "";
       if (status === "done") {
         clearReservationDateTimeEditor("予約投稿完了にしたので、変更後の日時欄をクリアしました。");
         clearGeneratedImageAfterReservation();
@@ -9195,10 +9219,10 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         saveDraft();
       }
       $("statusText").textContent = status === "done"
-        ? `選択した予約を予約投稿完了に移動しました。次の予約日は${nextDate}にしました。`
+        ? "選択した予約を予約投稿完了に移動しました。予定日は変更していません。"
         : "選択した予約を予約投稿前に戻しました。";
       setTimeout(() => $("statusText").textContent = "", 3200);
-      return nextDate;
+      return "";
     }
 
     async function postSelectedReservation() {
@@ -9222,7 +9246,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       }
       $("statusText").textContent = nextDate
         ? `予約投稿しました。予約投稿完了に移動し、次の予約日は${nextDate}にしました。${localSaveMessage}`
-        : `予約投稿しました。予約投稿完了に移動しました。${localSaveMessage}`;
+        : `予約投稿しました。予約投稿完了に移動しました。予定日は変更していません。${localSaveMessage}`;
       setTimeout(() => $("statusText").textContent = "", 3200);
     }
 
@@ -11388,6 +11412,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       const targetItem = persistSelectedReservationTextOverrides(item) || item;
       if (!validatePostTextBeforeSubmit(targetItem, "今すぐXに投稿", setXPostStatus)) return;
       item = targetItem;
+      const scheduleSnapshot = captureScheduleInputState(item.character || val("character"));
       const targetCharacter = xTokenCharacter(item && item.character);
       let token = "";
       loadXAccessToken(targetCharacter);
@@ -11445,6 +11470,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         clearGeneratedImageAfterReservation();
         clearIdeaSummaryFieldsAfterReservation(item.character || val("character"));
         clearSubCharacterSelection(item.character || val("character"));
+        restoreScheduleInputState(scheduleSnapshot);
         saveDraft();
         render();
         renderCalendar();
