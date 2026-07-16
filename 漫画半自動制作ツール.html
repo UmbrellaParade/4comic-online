@@ -951,6 +951,58 @@
       padding: 10px;
       text-align: center;
     }
+    .additional-asset-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .additional-asset-head span {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+    .additional-asset-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+      gap: 8px;
+    }
+    .additional-asset-card {
+      position: relative;
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      overflow: hidden;
+      background: #eef2f3;
+    }
+    .additional-asset-card img {
+      width: 100%;
+      height: 96px;
+      object-fit: contain;
+      display: block;
+    }
+    .additional-asset-name {
+      padding: 5px 7px;
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      background: var(--panel-soft);
+    }
+    .additional-asset-remove {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border-radius: 50%;
+      background: rgba(255,255,255,.94);
+      color: var(--danger);
+      border: 1px solid var(--line);
+      font-weight: 800;
+    }
     .x-schedule-image-frame {
       min-height: 260px;
       max-height: 560px;
@@ -1584,7 +1636,17 @@
                 <div class="preview-empty">作品資料なし</div>
               </div>
             </div>
-            <p class="hint">本の表紙、Kindle画面、ロゴ、小物などを登録します。ネタ内に本・表紙・Kindle・Amazonページ・スマホ画面が出る時に参照画像として使います。</p>
+            <div class="additional-asset-head">
+              <span>追加の小物画像（最大6枚・複数選択可）</span>
+              <div class="actions">
+                <button class="secondary" type="button" onclick="openGallery('additionalAssetRefs')">小物を追加</button>
+                <button id="clearAdditionalAssetRefs" class="secondary" type="button">追加分を全解除</button>
+              </div>
+            </div>
+            <div id="additionalAssetRefList" class="additional-asset-list">
+              <div class="preview-empty">追加小物なし</div>
+            </div>
+            <p class="hint">本の表紙、Kindle画面、ロゴ、小物などを複数登録できます。ギャラリーで画像をタップすると追加・解除でき、選択内容はキャラクター別と画像パターン別に保存されます。</p>
           </div>
 
           <div class="subchar-section">
@@ -5089,6 +5151,90 @@
       updateRuntimeImageStatus();
     }
 
+    const MAX_ADDITIONAL_ASSET_REFS = 6;
+    let additionalAssetRefImages = [];
+
+    function normalizeAdditionalAssetRefImages(paths = [], character = val("character")) {
+      const primary = val("assetRefImage");
+      const normalized = [];
+      (Array.isArray(paths) ? paths : []).forEach((path) => {
+        const value = String(path || "").trim();
+        if (!value || value === primary || normalized.includes(value)) return;
+        normalized.push(value);
+      });
+      return normalized.slice(0, MAX_ADDITIONAL_ASSET_REFS);
+    }
+
+    function selectedAdditionalAssetRefImages() {
+      return normalizeAdditionalAssetRefImages(additionalAssetRefImages);
+    }
+
+    function setAdditionalAssetRefImages(paths = [], options = {}) {
+      additionalAssetRefImages = normalizeAdditionalAssetRefImages(paths, options.character);
+      renderAdditionalAssetRefs();
+      if (options.save) saveCharacterImageSet(false);
+      if (options.render !== false) render();
+      return additionalAssetRefImages;
+    }
+
+    function additionalAssetImage(path, character = val("character")) {
+      return getCharacterImages(character).find((image) => image.path === path)
+        || Object.keys(characterData).map((name) => getCharacterImages(name).find((image) => image.path === path)).find(Boolean)
+        || null;
+    }
+
+    function renderAdditionalAssetRefs() {
+      const container = $("additionalAssetRefList");
+      if (!container) return;
+      const character = val("character") || "ヴェル13世";
+      const paths = selectedAdditionalAssetRefImages();
+      container.innerHTML = "";
+      if (!paths.length) {
+        container.innerHTML = '<div class="preview-empty">追加小物なし</div>';
+        return;
+      }
+      paths.forEach((path) => {
+        const image = additionalAssetImage(path, character);
+        const card = document.createElement("div");
+        card.className = "additional-asset-card";
+        if (imageUsableInHostedTool(path)) {
+          const preview = document.createElement("img");
+          preview.src = imageSrcForPath(path, character);
+          preview.alt = image?.name || "追加小物画像";
+          preview.onerror = () => {
+            preview.remove();
+            card.insertAdjacentHTML("afterbegin", '<div class="preview-empty">表示できません</div>');
+          };
+          card.appendChild(preview);
+        } else {
+          card.insertAdjacentHTML("afterbegin", '<div class="preview-empty">オンライン未保存</div>');
+        }
+        const name = document.createElement("div");
+        name.className = "additional-asset-name";
+        name.textContent = image?.name || path.split(/[\\/]/).pop() || "追加小物";
+        name.title = image?.name || path;
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "additional-asset-remove";
+        remove.textContent = "×";
+        remove.title = "この小物を解除";
+        remove.addEventListener("click", () => {
+          setAdditionalAssetRefImages(paths.filter((value) => value !== path), { save: true });
+        });
+        card.appendChild(name);
+        card.appendChild(remove);
+        container.appendChild(card);
+      });
+    }
+
+    function clearAdditionalAssetRefs(showMessage = true) {
+      setAdditionalAssetRefImages([], { save: true });
+      if (showMessage) {
+        $("statusText").textContent = "追加の小物画像をすべて解除しました。元画像ファイルは残っています。";
+        setTimeout(() => $("statusText").textContent = "", 2200);
+      }
+    }
+
 
 
     // ── Character image set persistence ──────────────────────────
@@ -5169,12 +5315,14 @@
     }
 
     function imageSetHasValue(set) {
-      return !!set && IMAGE_SET_IDS.some((id) => !!set[id]);
+      return !!set && (IMAGE_SET_IDS.some((id) => !!set[id])
+        || (Array.isArray(set.assetRefImages) && set.assetRefImages.length > 0));
     }
 
     function currentImageSet() {
       const set = {};
       IMAGE_SET_IDS.forEach((id) => { set[id] = val(id); });
+      set.assetRefImages = selectedAdditionalAssetRefImages();
       return set;
     }
 
@@ -5190,6 +5338,7 @@
           $(id).value = set[id];
         }
       });
+      setAdditionalAssetRefImages(set.assetRefImages || set.additionalAssetRefImages || [], { render: false });
       updatePreview();
       updateMangaRefPreview();
       updateAssetRefPreview();
@@ -5213,6 +5362,7 @@
       const character = val("character") || "ヴェル13世";
       const raw = localStorage.getItem(imageSetKey(character));
       const ok = raw ? applyImageSet(JSON.parse(raw)) : false;
+      if (!raw) setAdditionalAssetRefImages([], { render: false });
       updateImageSetStatus();
       if (showMessage) {
         $("statusText").textContent = ok ? `${character}の画像セットを読み込みました。` : `${character}の保存セットはまだありません。`;
@@ -5473,10 +5623,12 @@
 
     function clearAllImageRegistrations() {
       IMAGE_SET_IDS.forEach((id) => { $(id).value = ""; });
+      additionalAssetRefImages = [];
       saveCharacterImageSet(false);
       updatePreview();
       updateMangaRefPreview();
       updateAssetRefPreview();
+      renderAdditionalAssetRefs();
       updateAnglePreviews();
       render();
       $("statusText").textContent = "すべての画像登録を解除しました。元画像ファイルは残っています。";
@@ -5676,18 +5828,21 @@
       const character = val("character") || "ヴェル13世";
       const info = characterData[character] || characterData["ヴェル13世"];
       let images = referenceUsableImages(getCharacterImages(character), character);
+      const isAdditionalAssetMode = selectId === "additionalAssetRefs";
       if (selectId === "mangaRefImage") {
         images = images.filter((img) => MANGA_CATEGORIES.includes(img.category) || img.runtime);
-      } else if (selectId === "assetRefImage") {
+      } else if (selectId === "assetRefImage" || isAdditionalAssetMode) {
         const assetImages = images.filter((img) => imageLooksLikeAssetReference(img));
         images = assetImages.length ? assetImages : images;
       }
-      const currentVal = $(selectId).value;
+      const currentVal = isAdditionalAssetMode ? "" : $(selectId).value;
+      const currentValues = new Set(isAdditionalAssetMode ? selectedAdditionalAssetRefImages() : [currentVal]);
 
       const titleMap = {
         referenceImage: "キャラ参考画像を選ぶ",
         mangaRefImage:  "漫画参考画像を選ぶ",
         assetRefImage: "作品資料・小物参照画像を選ぶ",
+        additionalAssetRefs: `追加小物を選ぶ（最大${MAX_ADDITIONAL_ASSET_REFS}枚・タップで追加/解除）`,
         angleFront: "フロント（正面）画像を選ぶ",
         angleRight: "右サイド画像を選ぶ",
         angleLeft:  "左サイド画像を選ぶ",
@@ -5715,7 +5870,7 @@
         cells.className = "gallery-cells";
         imgs.forEach((img) => {
           const cell = document.createElement("div");
-          cell.className = "gallery-cell" + (img.path === currentVal ? " selected" : "");
+          cell.className = "gallery-cell" + (currentValues.has(img.path) ? " selected" : "");
           const image = document.createElement("img");
           image.src = imageSrcForPath(img.path, character);
           image.alt = img.name;
@@ -5726,6 +5881,23 @@
           cell.appendChild(image);
           cell.appendChild(name);
           cell.addEventListener("click", () => {
+            if (isAdditionalAssetMode) {
+              const selected = selectedAdditionalAssetRefImages();
+              if (selected.includes(img.path)) {
+                setAdditionalAssetRefImages(selected.filter((path) => path !== img.path), { save: true });
+                cell.classList.remove("selected");
+                currentValues.delete(img.path);
+              } else {
+                if (selected.length >= MAX_ADDITIONAL_ASSET_REFS) {
+                  $("statusText").textContent = `追加小物は最大${MAX_ADDITIONAL_ASSET_REFS}枚まで選べます。不要な画像を解除してから追加してください。`;
+                  return;
+                }
+                setAdditionalAssetRefImages([...selected, img.path], { save: true });
+                cell.classList.add("selected");
+                currentValues.add(img.path);
+              }
+              return;
+            }
             $(selectId).value = img.path;
             $(selectId).dispatchEvent(new Event("change"));
             closeGallery();
@@ -5744,6 +5916,11 @@
 
     function clearGallerySelection() {
       if (!galleryTargetId) return;
+      if (galleryTargetId === "additionalAssetRefs") {
+        clearAdditionalAssetRefs(false);
+        closeGallery();
+        return;
+      }
       deleteImageRegistration(galleryTargetId);
       closeGallery();
     }
@@ -6082,6 +6259,23 @@
       const assetRef = assetRefImage
         ? getCharacterImages(character).find((img) => img.path === assetRefImage)
         : null;
+      const additionalAssetRefs = selectedAdditionalAssetRefImages().map((rawPath) => {
+        const image = additionalAssetImage(rawPath, character);
+        return {
+          raw: rawPath,
+          path: image ? outputImagePath(image) : rawPath,
+          name: image?.name || rawPath.split(/[\\/]/).pop() || "追加小物参照"
+        };
+      });
+      const assetRefs = [
+        assetRefImage ? {
+          raw: assetRefImage,
+          path: assetRef ? outputImagePath(assetRef) : assetRefImage,
+          name: assetRef?.name || "作品資料・小物参照",
+          primary: true
+        } : null,
+        ...additionalAssetRefs
+      ].filter(Boolean);
       const subCharacters = Array.from(
         document.querySelectorAll(".subchar-check:checked")
       ).map((el) => el.value);
@@ -6144,6 +6338,8 @@
         assetRefImage: assetRef ? outputImagePath(assetRef) : assetRefImage,
         assetRefImageRaw: assetRefImage,
         assetRefImageName: assetRef ? assetRef.name : "",
+        assetRefs,
+        assetRefImagesRaw: additionalAssetRefs.map((ref) => ref.raw),
         angleFront: val("angleFront"),
         angleRight: val("angleRight"),
         angleLeft:  val("angleLeft"),
@@ -6165,7 +6361,9 @@
       const notePaths = (d.info.notePaths || []).map((path) => `- ${path}`).join("\n") || "-";
       const reference = d.referenceImage ? `${d.referenceImageName || "参考画像"}\n${d.referenceImage}` : "-";
       const mangaReference = d.mangaRefImage ? `${d.mangaRefImageName || "漫画参考"}\n${d.mangaRefImage}` : "-";
-      const assetReference = d.assetRefImage ? `${d.assetRefImageName || "作品資料・小物参照"}\n${d.assetRefImage}` : "-";
+      const assetReference = d.assetRefs && d.assetRefs.length
+        ? d.assetRefs.map((ref, index) => `- ${index + 1}. ${ref.name || "作品資料・小物参照"}\n  ${ref.path || ref.raw || ""}`).join("\n")
+        : "-";
       const subCharSection = d.subCharRefs && d.subCharRefs.length
         ? `\n## サブキャラクター\n\n${d.subCharRefs.map((ref) => `- ${ref.name}${ref.imageName ? `（参考画像: ${ref.imageName}）` : ""}`).join("\n")}\n`
         : "";
@@ -6435,8 +6633,8 @@ ${trioRule}
       const mangaReference = d.mangaRefImage
         ? `\nManga style reference image: ${d.mangaRefImageName}\nLocal path: ${d.mangaRefImage}\n`
         : "";
-      const assetReference = d.assetRefImage
-        ? `\nProduction asset / prop reference image: ${d.assetRefImageName}\nLocal path: ${d.assetRefImage}\nUse this image as the exact design reference whenever a book, novel cover, Kindle cover, Amazon page, smartphone screen, promotional book image, logo, or important prop appears in the manga. Do not invent a different book cover design. If the cover appears small, keep the overall colors, title layout, and main visual recognizable.\n`
+      const assetReference = d.assetRefs && d.assetRefs.length
+        ? `\nProduction asset / prop reference images (keep every item separate):\n${d.assetRefs.map((ref, index) => `- Prop ${index + 1}: ${ref.name || "production asset / prop"}\n  Local path: ${ref.path || ref.raw || ""}`).join("\n")}\nUse each selected image as the exact design reference only when that specific book, novel cover, Kindle cover, Amazon page, smartphone screen, logo, or prop appears in the script. Do not merge multiple props into one object, and do not transfer a prop's colors or design to a character. Do not invent a different design for a selected prop. If a prop appears small, keep its overall colors, silhouette, title layout, and main visual recognizable.\n`
         : "";
       const imagePatternBlock = d.imagePatternName
         ? `\nImage pattern / outfit variant for this episode: ${d.imagePatternName}\nUse the selected reference images as this exact costume, hairstyle, expression, and appearance pattern. Do not mix it with other saved image patterns.\n`
@@ -6691,6 +6889,7 @@ ${d.aiLabel ? "Disclosure note: AI-generated media may be labeled if required by
         referenceImageRaw: d.referenceImageRaw || "",
         mangaRefImageRaw: d.mangaRefImageRaw || "",
         assetRefImageRaw: d.assetRefImageRaw || "",
+        assetRefImagesRaw: d.assetRefImagesRaw || [],
         imagePatternName: d.imagePatternName || ""
       });
     }
@@ -12080,6 +12279,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         d.angleBack,
         d.mangaRefImageRaw,
         d.assetRefImageRaw,
+        ...((d.assetRefImagesRaw || []).map((path) => path)),
         ...(Array.isArray(d.subCharRefs)
           ? d.subCharRefs.flatMap((ref) => [
               ref.imageRaw,
@@ -12117,7 +12317,8 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
         [d.angleLeft, referenceImageLabel(character, "left-reference")],
         [d.angleBack, referenceImageLabel(character, "back-reference")],
         [d.mangaRefImageRaw, "manga-style-reference"],
-        [d.assetRefImageRaw, "production-asset-prop-reference"]
+        [d.assetRefImageRaw, "production-asset-prop-reference-1"],
+        ...((d.assetRefImagesRaw || []).map((value, index) => [value, `production-asset-prop-reference-${index + 2}`]))
       ];
       for (const [value, label] of directMatches) {
         if (sameReferencePath(value, path)) return label;
@@ -13620,11 +13821,17 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     });
     $("mangaRefImage").addEventListener("change", () => { updateMangaRefPreview(); saveCharacterImageSet(false); render(); });
     $("copyMangaRefPath").addEventListener("click", () => copyText(selectedOutputImagePath("mangaRefImage") || ""));
-    $("assetRefImage").addEventListener("change", () => { updateAssetRefPreview(); saveCharacterImageSet(false); render(); });
+    $("assetRefImage").addEventListener("change", () => {
+      setAdditionalAssetRefImages(additionalAssetRefImages, { render: false });
+      updateAssetRefPreview();
+      saveCharacterImageSet(false);
+      render();
+    });
     $("copyAssetRefPath").addEventListener("click", () => copyText(selectedOutputImagePath("assetRefImage") || ""));
     $("clearReferenceImage").addEventListener("click", () => deleteImageRegistration("referenceImage"));
     $("clearMangaRefImage").addEventListener("click", () => deleteImageRegistration("mangaRefImage"));
     $("clearAssetRefImage").addEventListener("click", () => deleteImageRegistration("assetRefImage"));
+    $("clearAdditionalAssetRefs").addEventListener("click", () => clearAdditionalAssetRefs(true));
     $("clearAngleFront").addEventListener("click", () => deleteImageRegistration("angleFront"));
     $("clearAngleRight").addEventListener("click", () => deleteImageRegistration("angleRight"));
     $("clearAngleLeft").addEventListener("click", () => deleteImageRegistration("angleLeft"));
