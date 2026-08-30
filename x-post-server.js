@@ -50,6 +50,7 @@ function resolveWritableDataDir() {
 const DATA_DIR = resolveWritableDataDir();
 const LOG_PATH = path.join(DATA_DIR, "x-post-server.log");
 const SCHEDULE_PATH = path.join(DATA_DIR, "x-scheduled-posts.json");
+const SCHEDULE_IMAGES_DIR = path.join(DATA_DIR, "x-schedule-images");
 const IMPORT_DIRS_PATH = path.join(DATA_DIR, "manga-import-directories.json");
 const OAUTH_TOKENS_PATH = path.join(DATA_DIR, "x-oauth-tokens.json");
 const RUNTIME_IMAGES_PATH = path.join(DATA_DIR, "runtime-images.json");
@@ -1777,6 +1778,81 @@ function writeScheduleQueue(queue) {
   }, "writeScheduleQueue", SCHEDULE_PATH);
 }
 
+function shouldExternalizeScheduleImages() {
+  return !isRemoteSchedulePersistenceConfigured() && !isGitHubActionsSchedulerMode();
+}
+
+function scheduleImageExtension(mimeType = "", filename = "") {
+  const normalizedMime = String(mimeType || "").toLowerCase();
+  if (normalizedMime === "image/jpeg") return ".jpg";
+  if (normalizedMime === "image/webp") return ".webp";
+  if (normalizedMime === "image/gif") return ".gif";
+  if (normalizedMime === "image/png") return ".png";
+  const ext = path.extname(String(filename || "")).toLowerCase();
+  if ([".jpg", ".jpeg", ".png", ".webp", ".gif"].includes(ext)) {
+    return ext === ".jpeg" ? ".jpg" : ext;
+  }
+  return ".png";
+}
+
+function scheduleImageMimeType(job, filePath = "") {
+  const stored = String((job && job.imageMimeType) || "").trim();
+  if (stored) return stored;
+  const ext = path.extname(filePath || String((job && job.filename) || "")).toLowerCase();
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".webp") return "image/webp";
+  if (ext === ".gif") return "image/gif";
+  return "image/png";
+}
+
+function resolveScheduleImagePath(job) {
+  const stored = String((job && job.imageFile) || "").trim();
+  if (!stored) return "";
+  const resolved = path.resolve(DATA_DIR, stored);
+  const allowedRoot = `${path.resolve(SCHEDULE_IMAGES_DIR)}${path.sep}`;
+  if (!resolved.startsWith(allowedRoot)) {
+    throw new Error("X予約画像の保存先が不正です。");
+  }
+  return resolved;
+}
+
+function storeScheduleImage(job, imageDataUrl) {
+  if (!job || !job.id) throw new Error("X予約キューIDがありません。");
+  const { mimeType, buffer } = dataUrlToMediaBuffer(imageDataUrl);
+  fs.mkdirSync(SCHEDULE_IMAGES_DIR, { recursive: true });
+  const ext = scheduleImageExtension(mimeType, job.filename || "");
+  const filePath = path.join(SCHEDULE_IMAGES_DIR, `${job.id}${ext}`);
+  withFileRetry(() => {
+    fs.writeFileSync(filePath, buffer);
+  }, "storeScheduleImage", filePath);
+  job.imageFile = path.relative(DATA_DIR, filePath).replace(/\\/g, "/");
+  job.imageMimeType = mimeType;
+  job.imageDataUrl = "";
+  return filePath;
+}
+
+function scheduleImageDataUrl(job) {
+  if (job && job.imageDataUrl) return String(job.imageDataUrl);
+  const filePath = resolveScheduleImagePath(job);
+  if (!filePath || !fs.existsSync(filePath)) return "";
+  const mimeType = scheduleImageMimeType(job, filePath);
+  return `data:${mimeType};base64,${fs.readFileSync(filePath).toString("base64")}`;
+}
+
+function removeScheduleImage(job) {
+  const filePath = resolveScheduleImagePath(job);
+  if (filePath) {
+    withFileRetry(() => {
+      fs.rmSync(filePath, { force: true });
+    }, "removeScheduleImage", filePath);
+  }
+  if (job) {
+    job.imageDataUrl = "";
+    job.imageFile = "";
+    job.imageMimeType = "";
+  }
+}
+
 function publicScheduleJob(job) {
   return {
     id: job.id,
@@ -1801,7 +1877,7 @@ function publicScheduleJobImage(job) {
     character: job.character || "",
     title: job.title || "",
     filename: job.filename || "",
-    imageDataUrl: job.imageDataUrl || ""
+    imageDataUrl: scheduleImageDataUrl(job)
   };
 }
 
@@ -1856,7 +1932,9 @@ async function refreshTokenForScheduledJob(job) {
 
 async function postScheduledJob(job) {
   const token = await refreshTokenForScheduledJob(job);
-  const mediaId = await uploadImageToX(token, job.imageDataUrl);
+  const imageDataUrl = scheduleImageDataUrl(job);
+  if (!imageDataUrl) throw new Error("このX予約キューには画像データが保存されていません。");
+  const mediaId = await uploadImageToX(token, imageDataUrl);
   const post = await createXPost(token, job.text, mediaId, !!job.madeWithAi);
   return { post, mediaId };
 }
@@ -1887,14 +1965,14 @@ async function tickScheduleQueue() {
         job.post = post;
         job.mediaId = mediaId;
         job.error = "";
-        job.imageDataUrl = "";
+        removeScheduleImage(job);
         log("SCHEDULE_POST_DONE", { id: job.id, postId: post.id, url: post.url });
       } catch (error) {
         job.status = "failed";
         job.failedAt = new Date().toISOString();
         job.error = friendlyXErrorMessage(error.message || String(error));
         job.errorDetail = error.body || null;
-        job.imageDataUrl = "";
+        removeScheduleImage(job);
         rememberError(error, { route: "schedule", scheduleId: job.id });
       }
       changed = true;
@@ -1926,6 +2004,7 @@ async function handleCancelScheduleX(req, res) {
   if (job.status === "done") throw new Error("このX予約はすでに投稿済みです。X投稿IDが反映されたあと、X投稿削除を実行してください。");
   if (job.status === "deleted") throw new Error("このX予約はすでに削除済みです。");
 
+  removeScheduleImage(job);
   queue.splice(index, 1);
   writeScheduleQueue(queue);
   const cancelled = publicScheduleJob({ ...job, status: "cancelled", deletedAt: new Date().toISOString(), error: "" });
@@ -1966,6 +2045,7 @@ async function handlePostScheduleNow(req, res) {
     job.mediaId = mediaId;
     job.error = "";
     job.errorDetail = null;
+    removeScheduleImage(job);
     writeScheduleQueue(queue);
     const gitPush = await syncScheduleQueueToGitHub("schedule post now");
     log("SCHEDULE_POST_NOW_DONE", { id: job.id, postId: post.id, url: post.url });
@@ -2041,8 +2121,14 @@ async function handleScheduleX(req, res) {
     });
   }
 
-  const queue = readScheduleQueue().filter((item) => {
-    return !(job.reservationId && item.reservationId === job.reservationId && ["pending", "posting"].includes(item.status));
+  if (shouldExternalizeScheduleImages()) {
+    storeScheduleImage(job, job.imageDataUrl);
+  }
+  const existingQueue = readScheduleQueue();
+  const queue = existingQueue.filter((item) => {
+    const replaced = job.reservationId && item.reservationId === job.reservationId && ["pending", "posting"].includes(item.status);
+    if (replaced) removeScheduleImage(item);
+    return !replaced;
   });
   queue.push(job);
   queue.sort((a, b) => Date.parse(a.scheduledAt || 0) - Date.parse(b.scheduledAt || 0));
