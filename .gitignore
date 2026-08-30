@@ -22,6 +22,8 @@ runtime-images.json
 data/x-scheduled-posts.json
 data/runtime-images.json
 data/manga-image-cleanup-report.json
+x-schedule-images/
+data/x-schedule-images/
 data/runtime-images/
 data/uploads/
 data/sync-logs/
@@ -31,6 +33,8 @@ data/sync-logs/
 
 # Dependencies
 node_modules/
+__pycache__/
+*.py[cod]
 
 # OS / editor files
 .DS_Store
