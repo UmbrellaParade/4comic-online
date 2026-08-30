@@ -1870,14 +1870,14 @@ function publicScheduleJob(job) {
   };
 }
 
-function publicScheduleJobImage(job) {
+function publicScheduleJobImage(job, imageDataUrl = scheduleImageDataUrl(job)) {
   return {
     id: job.id || "",
     reservationId: job.reservationId || "",
     character: job.character || "",
     title: job.title || "",
     filename: job.filename || "",
-    imageDataUrl: scheduleImageDataUrl(job)
+    imageDataUrl
   };
 }
 
@@ -4112,8 +4112,9 @@ const server = http.createServer(async (req, res) => {
         error.status = 404;
         throw error;
       }
-      if (!job.imageDataUrl) throw new Error("このX予約キューには画像データが保存されていません。");
-      sendJson(res, 200, { ok: true, image: publicScheduleJobImage(job) });
+      const imageDataUrl = scheduleImageDataUrl(job);
+      if (!imageDataUrl) throw new Error("このX予約キューには画像データが保存されていません。");
+      sendJson(res, 200, { ok: true, image: publicScheduleJobImage(job, imageDataUrl) });
     } catch (error) {
       rememberError(error, { route: "/schedule-image" });
       sendJson(res, error.status || 500, {
