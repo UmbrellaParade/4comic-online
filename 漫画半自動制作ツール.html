@@ -14044,7 +14044,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
     $("saveXLocalServerUrl").addEventListener("click", saveXLocalServerUrl);
     $("saveXCloudServerUrl").addEventListener("click", saveXCloudServerUrl);
     $("checkXLocalServer").addEventListener("click", () => checkXLocalServerConnection(true));
-    $("checkXToken").addEventListener("click", checkXToken);
+    $("checkXToken").addEventListener("click", () => checkXToken());
     $("showXLastError").addEventListener("click", showXLastError);
     $("refreshXScheduleQueue").addEventListener("click", () => refreshXScheduleQueue(true));
     $("wpSettingsCharacter").addEventListener("change", () => {
