@@ -6286,9 +6286,7 @@
         } : null,
         ...additionalAssetRefs
       ].filter(Boolean);
-      const subCharacters = Array.from(
-        document.querySelectorAll(".subchar-check:checked")
-      ).map((el) => el.value);
+      const subCharacters = selectedSubCharacterNames();
       const storyTextForDetection = [title, val("subtitle"), val("theme"), val("aim"), val("p1"), val("p2"), val("p3"), val("p4"), val("notes")]
         .filter(Boolean)
         .join("\n");
@@ -14303,7 +14301,7 @@ ${lines || "|  |  |  |  |  |  |  |  |"}
       const autoPostTextMode = currentAutoPostTextMode();
       const wantAutoPostText = autoPostTextMode !== "none";
       const wantIdeaHashtags = !$("createIdeaHashtags") || $("createIdeaHashtags").checked;
-      const selectedSubCharacters = Array.from(document.querySelectorAll(".subchar-check:checked")).map((el) => el.value);
+      const selectedSubCharacters = selectedSubCharacterNames();
       const subCharacterPromptBlock = selectedSubCharacters.length
         ? `\n## 登場キャラクター\n${selectedSubCharacters.map((name) => {
             const subInfo = characterData[name] || {};
