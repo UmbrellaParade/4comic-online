@@ -3200,6 +3200,12 @@
             "fixed": [
                   "Character: Amamori, written 雨守.",
                   "A rain elf boy who wants to become a novelist but has not become anyone yet.",
+                  "Visual identity: a small chibi boy with large bright blue eyes, long pointed elf ears, and a single curled ahoge.",
+                  "Hair is a wet-looking layered bob, deep navy blue at the crown fading through rain blue to pale silver-blue bangs. Never use a ponytail or plain cyan hair.",
+                  "Always show his small translucent dark blue rain-bat wings with gold edging and hanging raindrops whenever his back is visible.",
+                  "Clothing is a black hooded raincoat or short robe with blue raindrop motifs, subtle gold trim, black trousers, and glossy black boots.",
+                  "His recurring props are a small black record notebook and a fountain pen; keep his silhouette quiet, compact, rainy, and literary.",
+                  "Use the registered Amamori reference image as an exact identity reference. Do not simplify him into a generic blue-haired elf.",
                   "He hears voices left in the rain: regret, lingering feelings, and words that could not be said.",
                   "He is the record keeper of Umbrella Parade, the first one moved by Vel's parade, and sometimes an accomplice behind the scenes.",
                   "Quiet, observant, close to the reader, rainy and literary."
@@ -5059,7 +5065,11 @@
     function storyTextSuggestsCharacter(name, storyText, mainCharacter) {
       const text = String(storyText || "");
       if (!text) return false;
-      if (characterStrongMentionHints(name).some((hint) => hint && text.includes(hint))) return true;
+      if (name === "べるぼ") {
+        if (text.includes("べるぼ") || /ベルボ(?!トム)/.test(text) || /(^|[^A-Za-z0-9])Belbo([^A-Za-z0-9]|$)/i.test(text)) return true;
+      } else if (characterStrongMentionHints(name).some((hint) => hint && text.includes(hint))) {
+        return true;
+      }
       if (name === "ヴェル13世" && mainCharacter !== "ヴェル13世" && /(^|[^\p{L}\p{N}])(俺|オレ)([^\p{L}\p{N}]|$)/u.test(text)) return true;
       return false;
     }
